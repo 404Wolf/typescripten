@@ -41,7 +41,6 @@
                 nixd
                 llvm
                 toolchain
-                rust-analyzer-nightly
               ]
             );
           };
