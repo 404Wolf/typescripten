@@ -8,24 +8,25 @@
       url = "github:nix-community/fenix/monthly";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
     {
-      self,
-      nixpkgs,
-      flake-utils,
-      fenix,
-    }:
-    flake-utils.lib.eachDefaultSystem (
+      self, ...
+    }@inputs:
+    inputs.flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = import nixpkgs { inherit system; };
-        toolchain = fenix.packages.${system}.stable.toolchain;
+        pkgs = import inputs.nixpkgs { inherit system; };
+        toolchain = inputs.fenix.packages.${system}.stable.toolchain;
       in
       {
-        devShells = {
-          default = pkgs.mkShell {
+        devShells = rec {
+          llvm-rs = pkgs.mkShell {
             packages = (
               with pkgs;
               [
@@ -34,6 +35,27 @@
               ]
             );
           };
+          default = llvm-rs;
+        };
+        formatter =
+          let
+            treefmtconfig = inputs.treefmt-nix.lib.evalModule pkgs {
+              projectRootFile = "flake.nix";
+              programs = {
+                nixfmt.enable = true;
+                toml-sort.enable = true;
+                yamlfmt.enable = true;
+                mdformat.enable = true;
+                shellcheck.enable = true;
+                shfmt.enable = true;
+              };
+              settings.formatter.shellcheck.excludes = [ ".envrc" ];
+            };
+          in
+          treefmtconfig.config.build.wrapper;
+        packages = rec {
+          build = pkgs.callPackage ./nix/build.nix { inherit toolchain; };
+          default = build;
         };
       }
     );
