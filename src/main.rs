@@ -1,3 +1,4 @@
 fn main() {
-    println!("Hello, world!");
+    // Parse some Brainfuck with our parser
+    let result = brainfuck().parse("--[>--->->->++>-<<<<<-------]>--.>---------.>--..+++.>----.>+++++++++.<<.+++.------.<-.>>+.");
 }
