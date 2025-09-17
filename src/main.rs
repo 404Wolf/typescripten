@@ -2,7 +2,7 @@ use chumsky::prelude::*;
 
 /// An AST (Abstract Syntax Tree) for Brainfuck instructions
 #[derive(Clone)]
-enum Instr {
+pub enum Instr {
     Left,
     Right,
     Incr,
@@ -34,6 +34,18 @@ pub fn brainfuck<'a>() -> impl Parser<'a, &'a str, Vec<Instr>> {
 }
 
 fn main() {
-    // parse some brainfuck with our parser
     let result = brainfuck().parse("--[>--->->->++>-<<<<<-------]>--.>---------.>--..+++.>----.>+++++++++.<<.+++.------.<-.>>+.");
+
+    for instr in result.unwrap() {
+        match instr {
+            Instr::Left => print!("<"),
+            Instr::Right => print!(">"),
+            Instr::Incr => print!("+"),
+            Instr::Decr => print!("-"),
+            Instr::Read => print!(","),
+            Instr::Write => print!("."),
+            Instr::Loop(_) => print!("[loop]"),
+        }
+        println!();
+    }
 }
