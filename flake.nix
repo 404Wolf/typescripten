@@ -29,6 +29,8 @@
             packages = (
               with pkgs;
               [
+                nil
+                nixd
                 llvm
                 toolchain
               ]
