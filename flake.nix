@@ -2,7 +2,7 @@
   description = "CSDS 377 Compiler";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable-small";
     flake-utils.url = "github:numtide/flake-utils";
     fenix = {
       url = "github:nix-community/fenix/monthly";
@@ -22,7 +22,14 @@
       system:
       let
         pkgs = import inputs.nixpkgs { inherit system; };
-        toolchain = inputs.fenix.packages.${system}.stable.toolchain;
+        fenix_pkg = inputs.fenix.packages.${system};
+        rustComponents = [
+          "cargo"
+          "rust-src"
+          "rustc"
+          "rustfmt"
+        ];
+        toolchain = (fenix_pkg.complete.withComponents rustComponents);
       in
       {
         devShells = rec {
@@ -34,6 +41,7 @@
                 nixd
                 llvm
                 toolchain
+                rust-analyzer-nightly
               ]
             );
           };
