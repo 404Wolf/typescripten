@@ -41,6 +41,7 @@
                 nixd
                 llvm
                 toolchain
+                fenix_pkg.rust-analyzer
               ]
             );
           };
