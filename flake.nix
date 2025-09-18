@@ -16,7 +16,8 @@
 
   outputs =
     {
-      self, ...
+      self,
+      ...
     }@inputs:
     inputs.flake-utils.lib.eachDefaultSystem (
       system:
@@ -34,16 +35,24 @@
       {
         devShells = rec {
           llvm-rs = pkgs.mkShell {
+            shellHook = ''
+              export LD_LIBRARY_PATH="${pkgs.libffi}/lib:${pkgs.stdenv.cc.cc.lib}/lib"
+            '';
             packages = (
               with pkgs;
               [
+                libxml2.dev
                 nil
                 nixd
                 llvm
                 toolchain
+                libffi.dev
+                libffi
                 fenix_pkg.rust-analyzer
+                clang
               ]
             );
+            RUSTFLAGS = "-L ${pkgs.libffi}/lib -l ffi";
           };
           default = llvm-rs;
         };
