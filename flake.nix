@@ -42,12 +42,12 @@
               with pkgs;
               [
                 libxml2.dev
+                libffi.dev
+                libffi
                 nil
                 nixd
                 llvm
                 toolchain
-                libffi.dev
-                libffi
                 fenix_pkg.rust-analyzer
                 clang
               ]
