@@ -82,6 +82,10 @@ enum Token<'a> {
     // Control characters
     #[token("while")]
     While,
+    #[token("break")]
+    Break,
+    #[token("continue")]
+    Continue,
     #[token("do")]
     Do,
     #[token("if")]
@@ -134,6 +138,8 @@ impl fmt::Display for Token<'_> {
             Self::GreaterThanOrEqual => write!(f, ">="),
 
             Self::While => write!(f, "while"),
+            Self::Break => write!(f, "break"),
+            Self::Continue => write!(f, "continue"),
             Self::Do => write!(f, "do"),
             Self::If => write!(f, "if"),
             Self::Else => write!(f, "else"),
@@ -153,6 +159,13 @@ enum Types {
     Int,
     Float,
     Boolean,
+    Array(Box<Types>, Option<isize>),
+}
+
+#[derive(Clone, Debug)]
+enum Keywords {
+    Break,
+    Continue,
 }
 
 #[derive(Clone, Debug)]
@@ -161,6 +174,12 @@ enum Expr {
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
     Div(Box<Expr>, Box<Expr>),
+    Eql(Box<Expr>, Box<Expr>),
+    NEq(Box<Expr>, Box<Expr>),
+    LT(Box<Expr>, Box<Expr>),
+    LEq(Box<Expr>, Box<Expr>),
+    GT(Box<Expr>, Box<Expr>),
+    GEq(Box<Expr>, Box<Expr>),
     Int(f64),
     Float(f64),
     Boolean(bool),
@@ -168,12 +187,16 @@ enum Expr {
     Assign(String, Box<Expr>),
     Declare(Types, String),
     Group(Box<Expr>),
+    Keyword(Keywords),
 }
 
 #[derive(Clone, Debug)]
 enum Stmt {
     Expr(Box<Expr>),
     Block(LinkedList<Stmt>),
+    If(Expr, Box<Stmt>),
+    While(Expr, Box<Stmt>),
+    DoWhile(Expr, Box<Stmt>),
 }
 
 #[derive(Clone, Debug)]
@@ -190,7 +213,7 @@ impl<'a> Into<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
         match self {
             StmtList::Stmt(stmts) => {
                 fn process_stmt(
-                    stmt: Stmt,
+                    stmt: &Stmt,
                     symbol_table: &Arc<Mutex<ChainedSymbolTable<Assignment>>>,
                 ) {
                     match stmt {
@@ -217,14 +240,17 @@ impl<'a> Into<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
 
                             block_stmts
                                 .into_par_iter()
-                                .for_each(|stmt| process_stmt(stmt, &child_scope))
-                        }
+                                .for_each(|stmt| process_stmt(&stmt, &child_scope))
+                        },
+                        Stmt::If(_, stmt) => process_stmt(stmt.as_ref(), symbol_table),
+                        Stmt::While(_, stmt) => process_stmt(stmt.as_ref(), symbol_table),
+                        Stmt::DoWhile(_, stmt) => process_stmt(stmt.as_ref(), symbol_table),
                     }
                 }
 
-                for stmt in stmts {
-                    process_stmt(stmt, &symbol_table);
-                }
+                stmts
+                    .into_par_iter()
+                    .for_each(|stmt| process_stmt(&stmt, &symbol_table))
             }
         }
 
@@ -244,13 +270,34 @@ where
         Token::ID(s) => Expr::ID(s.to_string()),
     };
 
+    let array_dimensions = select! {
+        Token::Int(n) => Some(n.parse::<isize>().unwrap()) // ideally handle error better
+    }
+        .or_not() // handles empty []
+        .delimited_by(just(Token::LBracket), just(Token::RBracket))
+        .repeated()
+        .collect::<Vec<_>>(); // use Vec for easier folding
+
     let declaration = select! {
         Token::IntType => Types::Int,
         Token::FloatType => Types::Float,
         Token::BooleanType => Types::Boolean,
     }
-    .then(select! { Token::ID(s) => s.to_string() })
-    .map(|(a, b)| Expr::Declare(a, b));
+        .then(array_dimensions.or_not())
+        .then(select! { Token::ID(s) => s.to_string() })
+        .map(|((types, quantities), name)| 
+            match quantities {
+                Some(quantities) => Expr::Declare(quantities.iter()
+                    .fold(
+                        types,
+                        |acc, size| match size {
+                                Some(Some(size)) => Types::Array(acc.into(), Some(*size)),
+                                _ => Types::Array(acc.into(), None)
+                        }
+                    ), name),
+                None => Expr::Declare(types, name)
+            }
+        );
 
     let expr = recursive(|expr| {
         let assignment = select! { Token::ID(s) => s.to_string() }
@@ -293,31 +340,80 @@ where
             },
         );
 
+        let aterm = addition.clone().or(mterm.clone());
+
+        let comparisons = aterm.clone().foldl(
+            just(Token::Equal)
+                .or(just(Token::NotEqual))
+                .or(just(Token::LessThan))
+                .or(just(Token::LessThanOrEqual))
+                .or(just(Token::GreaterThan))
+                .or(just(Token::GreaterThanOrEqual))
+                .then(aterm.clone())
+                .repeated()
+                .at_least(1),
+            |lhs, (op, rhs)| match op {
+                Token::Equal => Expr::Eql(lhs.into(), rhs.into()),
+                Token::NotEqual => Expr::NEq(lhs.into(), rhs.into()),
+                Token::LessThan => Expr::LT(lhs.into(), rhs.into()),
+                Token::LessThanOrEqual => Expr::LEq(lhs.into(), rhs.into()),
+                Token::GreaterThan => Expr::GT(lhs.into(), rhs.into()),
+                Token::GreaterThanOrEqual => Expr::GEq(lhs.into(), rhs.into()),
+                _ => unreachable!("unexpected operator"),
+            },
+        );
+
         declaration
             .or(assignment)
             .or(multiplication)
             .or(addition)
+            .or(comparisons)
             .or(parenthesized)
             .or(atom)
     });
 
     let statement = expr
+        .clone()
+        .or(select! {
+            Token::Break => Keywords::Break,
+            Token::Continue => Keywords::Continue,
+        }.map(Expr::Keyword))
         // Multiple terminators allowed
         .then_ignore(just(Token::Terminator).repeated())
         .map(|e| Stmt::Expr(e.into()));
 
     let block = recursive(|blk| {
-        statement
+        let block = statement
             .clone()
             .or(blk)
             .repeated()
             .collect::<LinkedList<_>>()
             .delimited_by(just(Token::LBrace), just(Token::RBrace))
-            .map(Stmt::Block)
+            .map(Stmt::Block);
+
+        let block_or_stmt = block.clone().or(statement.clone());
+
+        let blk_stmt = just(Token::If).or(just(Token::While))
+            .then(expr.clone())
+            .then(block_or_stmt.clone())
+            .map(|((t, e), s)| match t {
+                Token::If => Stmt::If(e, s.into()),
+                Token::While => Stmt::While(e, s.into()),
+                _ => unreachable!("unexpected keyword")
+            });
+
+        let do_while = just(Token::Do)
+            .ignore_then(block_or_stmt.clone())
+            .then_ignore(just(Token::While))
+            .then(expr.clone())
+            .then_ignore(just(Token::Terminator))
+            .map(|(b, s)| Stmt::DoWhile(s, b.into()));
+
+        do_while.or(blk_stmt).or(block)
     });
 
     block
-        .or(statement.clone())
+        .or(statement)
         .repeated()
         .collect::<LinkedList<_>>()
         .map(StmtList::Stmt)
