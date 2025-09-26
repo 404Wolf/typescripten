@@ -183,7 +183,7 @@ enum Expr {
     Float(f64),
     Boolean(bool),
     ID(String),
-    Assign(String, Box<Expr>),
+    Assign(String, Box<Expr>, Option<Vec<Expr>>),
     Declare(Types, String),
     Group(Box<Expr>),
     Keyword(Keywords),
@@ -222,7 +222,7 @@ impl<'a> Into<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
                                     table.insert(id.clone(), (types.clone(), None));
                                 }
                             }
-                            Expr::Assign(id, value) => {
+                            Expr::Assign(id, value, _) => { // Ignore indexing for now
                                 if let Ok(mut table) = symbol_table.lock() {
                                     if let Some((type_info, _)) = table.get(id).clone() {
                                         table.insert(
@@ -309,11 +309,10 @@ where
         let indexing = expr.clone()
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
             .repeated()
-            .at_least(1)
             .collect::<Vec<_>>();
 
         let indexed = term.clone()
-            .then(indexing)
+            .then(indexing.clone())
             .map(|(exp, indices)| 
                     indices.iter()
                         .fold(
@@ -324,17 +323,16 @@ where
 
         let assignment = select! {
                 Token::ID(s) => s.to_string(),
-            }.or(indexed.clone().map(|_| "The Index".to_string()))
+            }
+            .then(indexing.clone().or_not())
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
-            .map(|(name, expr)| Expr::Assign(name, Box::new(expr)));
+            .map(|((name, index), expr)| Expr::Assign(name, Box::new(expr), index));
 
-        let iterm = term.clone().or(indexed.clone());
-
-        let multiplication = iterm.clone().foldl(
+        let multiplication = indexed.clone().foldl(
             just(Token::Mul)
                 .or(just(Token::Div))
-                .then(iterm.clone())
+                .then(indexed.clone())
                 .repeated()
                 .at_least(1),
             |lhs, (op, rhs)| match op {
@@ -344,7 +342,7 @@ where
             },
         );
 
-        let mterm = multiplication.clone().or(iterm.clone());
+        let mterm = multiplication.clone().or(indexed.clone());
 
         let addition = mterm.clone().foldl(
             just(Token::Add)
