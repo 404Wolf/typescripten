@@ -1,9 +1,16 @@
 use chumsky::{
+    container::Seq,
     input::{Stream, ValueInput},
     prelude::*,
 };
 use logos::Logos;
-use std::{collections::LinkedList, fmt};
+use std::{
+    collections::LinkedList,
+    fmt,
+    sync::{Arc, Mutex},
+};
+
+use crate::collections::ChainedSymbolTable;
 
 #[derive(Logos, Clone, PartialEq)]
 enum Token<'a> {
@@ -173,6 +180,58 @@ enum StmtList {
     Stmt(LinkedList<Stmt>),
 }
 
+type Assignment = (Types, Option<Expr>);
+
+impl<'a> Into<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
+    fn into(self) -> Arc<Mutex<ChainedSymbolTable<Assignment>>> {
+        let symbol_table = Arc::new(Mutex::new(ChainedSymbolTable::<Assignment>::default()));
+
+        match self {
+            StmtList::Stmt(stmts) => {
+                fn process_stmt(
+                    stmt: Stmt,
+                    symbol_table: &Arc<Mutex<ChainedSymbolTable<Assignment>>>,
+                ) {
+                    match stmt {
+                        Stmt::Expr(expr) => match expr.as_ref() {
+                            Expr::Declare(types, id) => {
+                                if let Ok(mut table) = symbol_table.lock() {
+                                    table.insert(id.clone(), (types.clone(), None));
+                                }
+                            }
+                            Expr::Assign(id, value) => {
+                                if let Ok(mut table) = symbol_table.lock() {
+                                    if let Some((type_info, _)) = table.get(id).clone() {
+                                        table.insert(
+                                            id.clone(),
+                                            (type_info, Some(value.as_ref().clone())),
+                                        );
+                                    }
+                                }
+                            }
+                            _ => (),
+                        },
+                        Stmt::Block(block_stmts) => {
+                            let child_scope = ChainedSymbolTable::add_child(symbol_table);
+
+                            // Process statements in the child scope
+                            for stmt in block_stmts {
+                                process_stmt(stmt, &child_scope);
+                            }
+                        }
+                    }
+                }
+
+                for stmt in stmts {
+                    process_stmt(stmt, &symbol_table);
+                }
+            }
+        }
+
+        symbol_table
+    }
+}
+
 fn parser<'tokens, 'src: 'tokens, I>()
 -> impl Parser<'tokens, I, StmtList, extra::Err<Rich<'tokens, Token<'src>>>>
 where
@@ -279,6 +338,8 @@ pub fn parse(src: &str) {
     match parser().parse(token_stream).into_result() {
         Ok(ast) => {
             println!("Parsed successfully: {:#?}", ast);
+            let chained_symbol_table: Arc<Mutex<ChainedSymbolTable<Assignment>>> = ast.into();
+            println!("Chained Symbol Table: {:#?}", chained_symbol_table);
         }
         Err(errs) => {
             for e in errs {

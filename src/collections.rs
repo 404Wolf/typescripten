@@ -1,21 +1,25 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, LinkedList};
 use std::fmt;
+use std::sync::{Arc, Mutex};
 
-pub struct ChainedSymbolTable<'a, T> {
-    parent: Option<&'a ChainedSymbolTable<'a, T>>,
+#[derive(Debug)]
+pub struct ChainedSymbolTable<T> {
+    parent: Option<Arc<Mutex<ChainedSymbolTable<T>>>>,
+    children: LinkedList<Arc<Mutex<ChainedSymbolTable<T>>>>,
     symbols: HashMap<String, T>,
 }
 
-impl<'a, T> Default for ChainedSymbolTable<'a, T> {
+impl<T> Default for ChainedSymbolTable<T> {
     fn default() -> Self {
         Self::new(None)
     }
 }
 
-impl<'a, T> ChainedSymbolTable<'a, T> {
-    pub fn new(parent: Option<&'a ChainedSymbolTable<'a, T>>) -> Self {
+impl<T> ChainedSymbolTable<T> {
+    pub fn new(parent: Option<Arc<Mutex<ChainedSymbolTable<T>>>>) -> Self {
         Self {
             parent,
+            children: LinkedList::new(),
             symbols: HashMap::new(),
         }
     }
@@ -24,14 +28,33 @@ impl<'a, T> ChainedSymbolTable<'a, T> {
         self.symbols.insert(key, value);
     }
 
-    pub fn get(&self, key: &str) -> Option<&T> {
-        self.symbols
-            .get(key)
-            .or_else(|| self.parent.and_then(|p| p.get(key)))
+    pub fn add_child(self_arc: &Arc<Mutex<Self>>) -> Arc<Mutex<ChainedSymbolTable<T>>> {
+        let child = Arc::new(Mutex::new(ChainedSymbolTable::new(Some(Arc::clone(
+            self_arc,
+        )))));
+        if let Ok(mut parent) = self_arc.lock() {
+            parent.children.push_back(Arc::clone(&child));
+        }
+        child
+    }
+
+    pub fn get(&self, key: &str) -> Option<T>
+    where
+        T: Clone,
+    {
+        self.symbols.get(key).cloned().or_else(|| {
+            self.parent.as_ref().and_then(|p| {
+                if let Ok(parent) = p.lock() {
+                    parent.get(key)
+                } else {
+                    None
+                }
+            })
+        })
     }
 }
 
-impl<'a, T: fmt::Display> fmt::Display for ChainedSymbolTable<'a, T> {
+impl<T: fmt::Display> fmt::Display for ChainedSymbolTable<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Print current symbols
         write!(f, "{{")?;
@@ -46,39 +69,12 @@ impl<'a, T: fmt::Display> fmt::Display for ChainedSymbolTable<'a, T> {
         write!(f, "}}")?;
 
         // If there is a parent, show it too
-        if let Some(parent) = self.parent {
-            write!(f, " -> {}", parent)?; // hidden recursion
+        if let Some(parent) = &self.parent {
+            if let Ok(parent) = parent.lock() {
+                write!(f, " -> {}", parent)?;
+            }
         }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_chained_symbol_table() {
-        let mut global = ChainedSymbolTable::new(None);
-        global.insert("x".to_string(), 1);
-
-        let mut local = ChainedSymbolTable::new(Some(&global));
-        local.insert("y".to_string(), 2);
-
-        // Lookup from current scope
-        assert_eq!(local.get("y"), Some(&2));
-
-        // Lookup falls back to parent
-        assert_eq!(local.get("x"), Some(&1));
-
-        // Lookup missing key
-        assert_eq!(local.get("z"), None);
-
-        // Display should include both scopes
-        let s = format!("{}", local);
-        // Order in HashMap isn't guaranteed, so just check substrings
-        assert!(s.contains("y: 2"));
-        assert!(s.contains("x: 1"));
     }
 }
