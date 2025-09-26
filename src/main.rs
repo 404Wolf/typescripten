@@ -2,8 +2,8 @@
 
 use crate::parse::parse;
 
-mod parse;
 pub mod collections;
+mod parse;
 
 use clap::Parser;
 use std::fs;
