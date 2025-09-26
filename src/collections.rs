@@ -52,29 +52,25 @@ impl<T> ChainedSymbolTable<T> {
             })
         })
     }
-}
 
-impl<T: fmt::Display> fmt::Display for ChainedSymbolTable<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Print current symbols
-        write!(f, "{{")?;
-        let mut first = true;
-        for (k, v) in &self.symbols {
-            if !first {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}: {}", k, v)?;
-            first = false;
-        }
-        write!(f, "}}")?;
+    /// Recursively get all symbols from the current table and its children tables in nested structure.
+    pub fn symbols(&self) -> LinkedList<LinkedList<String>> {
+        let mut result = LinkedList::new();
 
-        // If there is a parent, show it too
-        if let Some(parent) = &self.parent {
-            if let Ok(parent) = parent.lock() {
-                write!(f, " -> {}", parent)?;
+        // Add current scope's symbols
+        let mut current_symbols = LinkedList::new();
+
+        current_symbols.extend(self.symbols.keys().cloned());
+        result.push_back(current_symbols);
+
+        // Add child scopes recursively
+        for child in &self.children {
+            if let Ok(child_table) = child.lock() {
+                let child_symbols = child_table.symbols();
+                result.extend(child_symbols);
             }
         }
 
-        Ok(())
+        result
     }
 }

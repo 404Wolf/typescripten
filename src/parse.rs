@@ -1,12 +1,13 @@
 use chumsky::{
-    container::Seq,
     input::{Stream, ValueInput},
     prelude::*,
 };
 use logos::Logos;
 use rayon::prelude::*;
 use std::{
-    collections::LinkedList, fmt, ops::IndexMut, sync::{Arc, Mutex}
+    collections::LinkedList,
+    fmt,
+    sync::{Arc, Mutex},
 };
 
 use crate::collections::ChainedSymbolTable;
@@ -166,7 +167,7 @@ enum Keywords {
     Continue,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 enum Expr {
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
@@ -222,13 +223,55 @@ impl<'a> Into<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
                                     table.insert(id.clone(), (types.clone(), None));
                                 }
                             }
-                            Expr::Assign(id, value, _) => { // Ignore indexing for now
+
+                            Expr::Assign(id, value, _) => {
+                                // Ignore indexing for now
                                 if let Ok(mut table) = symbol_table.lock() {
                                     if let Some((type_info, _)) = table.get(id).clone() {
                                         table.insert(
                                             id.clone(),
                                             (type_info, Some(value.as_ref().clone())),
                                         );
+                                    }
+                                }
+                            }
+
+                            impl fmt::Debug for Expr {
+                                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                                    match self {
+                                        Expr::Add(lhs, rhs) => write!(f, "{:?} + {:?}", lhs, rhs),
+                                        Expr::Sub(lhs, rhs) => write!(f, "{:?} - {:?}", lhs, rhs),
+                                        Expr::Mul(lhs, rhs) => write!(f, "{:?} * {:?}", lhs, rhs),
+                                        Expr::Div(lhs, rhs) => write!(f, "{:?} / {:?}", lhs, rhs),
+                                        Expr::Eql(lhs, rhs) => write!(f, "{:?} == {:?}", lhs, rhs),
+                                        Expr::NEq(lhs, rhs) => write!(f, "{:?} != {:?}", lhs, rhs),
+                                        Expr::LT(lhs, rhs) => write!(f, "{:?} < {:?}", lhs, rhs),
+                                        Expr::LEq(lhs, rhs) => write!(f, "{:?} <= {:?}", lhs, rhs),
+                                        Expr::GT(lhs, rhs) => write!(f, "{:?} > {:?}", lhs, rhs),
+                                        Expr::GEq(lhs, rhs) => write!(f, "{:?} >= {:?}", lhs, rhs),
+                                        Expr::Index(expr, index) => write!(f, "{:?} [ {:?} ]", expr, index),
+                                        Expr::Int(n) => write!(f, "num"),
+                                        Expr::Float(n) => write!(f, "num"),
+                                        Expr::Boolean(_) => write!(f, "true"),
+                                        Expr::ID(name) => write!(f, "id"),
+                                        Expr::Assign(name, value, indices) => {
+                                            if let Some(_) = indices {
+                                                write!(f, "id [ id ] = {:?}", value)
+                                            } else {
+                                                write!(f, "id = {:?}", value)
+                                            }
+                                        }
+                                        Expr::Declare(types, name) => {
+                                            match types {
+                                                Types::Array(_, _) => write!(f, "basic [ num ] id"),
+                                                _ => write!(f, "basic id"),
+                                            }
+                                        }
+                                        Expr::Group(expr) => write!(f, "( {:?} )", expr),
+                                        Expr::Keyword(keyword) => match keyword {
+                                            Keywords::Break => write!(f, "break"),
+                                            Keywords::Continue => write!(f, "continue"),
+                                        },
                                     }
                                 }
                             }
@@ -240,7 +283,7 @@ impl<'a> Into<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
                             block_stmts
                                 .into_par_iter()
                                 .for_each(|stmt| process_stmt(&stmt, &child_scope))
-                        },
+                        }
                         Stmt::If(_, stmt) => process_stmt(stmt.as_ref(), symbol_table),
                         Stmt::While(_, stmt) => process_stmt(stmt.as_ref(), symbol_table),
                         Stmt::DoWhile(_, stmt) => process_stmt(stmt.as_ref(), symbol_table),
@@ -257,7 +300,13 @@ impl<'a> Into<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
     }
 }
 
-fn parser<'tokens, 'src: 'tokens, I>()
+impl fmt::Debug for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expr::Add(lhs, rhs) => write!(f, "{:?} + {:?}", lhs, rhs),
+            Expr::Sub(lhs, rhs) => write!(f, "{:?} - {:?}", lhs, rhs),
+            Expr::Mul(lhs, rhs) => write!(f, "{:?} * {:?}", lhs, rhs),
+            Expr::arser<'tokens, 'src: 'tokens, I>()
 -> impl Parser<'tokens, I, StmtList, extra::Err<Rich<'tokens, Token<'src>>>>
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = SimpleSpan>,
@@ -272,31 +321,28 @@ where
     let array_dimensions = select! {
         Token::Int(n) => Some(n.parse::<isize>().unwrap())
     }
-        .or_not()
-        .delimited_by(just(Token::LBracket), just(Token::RBracket))
-        .repeated()
-        .collect::<Vec<_>>();
+    .or_not()
+    .delimited_by(just(Token::LBracket), just(Token::RBracket))
+    .repeated()
+    .collect::<Vec<_>>();
 
     let declaration = select! {
         Token::IntType => Types::Int,
         Token::FloatType => Types::Float,
         Token::BooleanType => Types::Boolean,
     }
-        .then(array_dimensions.or_not())
-        .then(select! { Token::ID(s) => s.to_string() })
-        .map(|((types, quantities), name)| 
-            match quantities {
-                Some(quantities) => Expr::Declare(quantities.iter()
-                    .fold(
-                        types,
-                        |acc, size| match size {
-                                Some(Some(size)) => Types::Array(acc.into(), Some(*size)),
-                                _ => Types::Array(acc.into(), None)
-                        }
-                    ), name),
-                None => Expr::Declare(types, name)
-            }
-        );
+    .then(array_dimensions.or_not())
+    .then(select! { Token::ID(s) => s.to_string() })
+    .map(|((types, quantities), name)| match quantities {
+        Some(quantities) => Expr::Declare(
+            quantities.iter().fold(types, |acc, size| match size {
+                Some(Some(size)) => Types::Array(acc.into(), Some(*size)),
+                _ => Types::Array(acc.into(), None),
+            }),
+            name,
+        ),
+        None => Expr::Declare(types, name),
+    });
 
     let expr = recursive(|expr| {
         let parenthesized = expr
@@ -306,28 +352,25 @@ where
 
         let term = atom.or(parenthesized.clone());
 
-        let indexing = expr.clone()
+        let indexing = expr
+            .clone()
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
             .repeated()
             .collect::<Vec<_>>();
 
-        let indexed = term.clone()
-            .then(indexing.clone())
-            .map(|(exp, indices)| 
-                    indices.iter()
-                        .fold(
-                            exp,
-                            |acc, index| Expr::Index(acc.into(), (*index).clone().into())
-                        )
-            );
+        let indexed = term.clone().then(indexing.clone()).map(|(exp, indices)| {
+            indices.iter().fold(exp, |acc, index| {
+                Expr::Index(acc.into(), (*index).clone().into())
+            })
+        });
 
         let assignment = select! {
-                Token::ID(s) => s.to_string(),
-            }
-            .then(indexing.clone().or_not())
-            .then_ignore(just(Token::Assign))
-            .then(expr.clone())
-            .map(|((name, index), expr)| Expr::Assign(name, Box::new(expr), index));
+            Token::ID(s) => s.to_string(),
+        }
+        .then(indexing.clone().or_not())
+        .then_ignore(just(Token::Assign))
+        .then(expr.clone())
+        .map(|((name, index), expr)| Expr::Assign(name, Box::new(expr), index));
 
         let multiplication = indexed.clone().foldl(
             just(Token::Mul)
@@ -394,7 +437,8 @@ where
         .or(select! {
             Token::Break => Keywords::Break,
             Token::Continue => Keywords::Continue,
-        }.map(Expr::Keyword))
+        }
+        .map(Expr::Keyword))
         // Multiple terminators allowed
         .then_ignore(just(Token::Terminator).repeated())
         .map(|e| Stmt::Expr(e.into()));
@@ -410,13 +454,14 @@ where
 
         let block_or_stmt = block.clone().or(statement.clone());
 
-        let blk_stmt = just(Token::If).or(just(Token::While))
+        let blk_stmt = just(Token::If)
+            .or(just(Token::While))
             .then(expr.clone())
             .then(block_or_stmt.clone())
             .map(|((t, e), s)| match t {
                 Token::If => Stmt::If(e, s.into()),
                 Token::While => Stmt::While(e, s.into()),
-                _ => unreachable!("unexpected keyword")
+                _ => unreachable!("unexpected keyword"),
             });
 
         let do_while = just(Token::Do)
@@ -450,9 +495,18 @@ pub fn parse(src: &str) {
 
     match parser().parse(token_stream).into_result() {
         Ok(ast) => {
-            println!("Parsed successfully: {:#?}", ast);
+            println!("AST:");
+            println!("{:?}", ast);
+
             let chained_symbol_table: Arc<Mutex<ChainedSymbolTable<Assignment>>> = ast.into();
-            println!("Chained Symbol Table: {:#?}", chained_symbol_table);
+            let chained_symbol_table = chained_symbol_table.lock().unwrap();
+            println!("Parsing completed successfully.\n");
+            println!("Symbol Table:");
+            println!("----");
+            for name in chained_symbol_table.symbols().iter().flatten() {
+                println!("ID: {}", name);
+            }
+            println!("----");
         }
         Err(errs) => {
             for e in errs {
