@@ -12,7 +12,7 @@ use std::{
 
 use crate::collections::ChainedSymbolTable;
 
-#[derive(Logos, Clone, PartialEq)]
+#[derive(Logos, Clone, Debug, PartialEq)]
 enum Token<'a> {
     Error,
 
@@ -102,7 +102,7 @@ enum Token<'a> {
     Whitespace,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Types {
     Int,
     Float,
@@ -110,13 +110,13 @@ enum Types {
     Array(Box<Types>, Option<isize>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Keywords {
     Break,
     Continue,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Expr {
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
@@ -139,7 +139,7 @@ enum Expr {
     Keyword(Keywords),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Stmt {
     Expr(Box<Expr>),
     Block(LinkedList<Stmt>),
@@ -148,12 +148,12 @@ enum Stmt {
     DoWhile(Expr, Box<Stmt>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum StmtList {
     Stmt(LinkedList<Stmt>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Assignment {
     types: Types,
     value: Option<Expr>,
@@ -239,72 +239,17 @@ impl fmt::Display for Keywords {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expr::Add(lhs, rhs) => write!(
-                f,
-                "{} + {}",
-                print_ast(lhs.as_ref()),
-                print_ast(rhs.as_ref())
-            ),
-            Expr::Sub(lhs, rhs) => write!(
-                f,
-                "{} - {}",
-                print_ast(lhs.as_ref()),
-                print_ast(rhs.as_ref())
-            ),
-            Expr::Mul(lhs, rhs) => write!(
-                f,
-                "{} * {}",
-                print_ast(lhs.as_ref()),
-                print_ast(rhs.as_ref())
-            ),
-            Expr::Div(lhs, rhs) => write!(
-                f,
-                "{} / {}",
-                print_ast(lhs.as_ref()),
-                print_ast(rhs.as_ref())
-            ),
-            Expr::Eql(lhs, rhs) => write!(
-                f,
-                "{} == {}",
-                print_ast(lhs.as_ref()),
-                print_ast(rhs.as_ref())
-            ),
-            Expr::NEq(lhs, rhs) => write!(
-                f,
-                "{} != {}",
-                print_ast(lhs.as_ref()),
-                print_ast(rhs.as_ref())
-            ),
-            Expr::LT(lhs, rhs) => write!(
-                f,
-                "{} < {}",
-                print_ast(lhs.as_ref()),
-                print_ast(rhs.as_ref())
-            ),
-            Expr::LEq(lhs, rhs) => write!(
-                f,
-                "{} <= {}",
-                print_ast(lhs.as_ref()),
-                print_ast(rhs.as_ref())
-            ),
-            Expr::GT(lhs, rhs) => write!(
-                f,
-                "{} > {}",
-                print_ast(lhs.as_ref()),
-                print_ast(rhs.as_ref())
-            ),
-            Expr::GEq(lhs, rhs) => write!(
-                f,
-                "{} >= {}",
-                print_ast(lhs.as_ref()),
-                print_ast(rhs.as_ref())
-            ),
-            Expr::Index(expr, index) => write!(
-                f,
-                "{} [ {} ]",
-                print_ast(expr.as_ref()),
-                print_ast(index.as_ref())
-            ),
+            Expr::Add(lhs, rhs) => write!(f, "{} + {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::Sub(lhs, rhs) => write!(f, "{} - {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::Mul(lhs, rhs) => write!(f, "{} * {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::Div(lhs, rhs) => write!(f, "{} / {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::Eql(lhs, rhs) => write!(f, "{} == {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::NEq(lhs, rhs) => write!(f, "{} != {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::LT(lhs, rhs) => write!(f, "{} < {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::LEq(lhs, rhs) => write!(f, "{} <= {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::GT(lhs, rhs) => write!(f, "{} > {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::GEq(lhs, rhs) => write!(f, "{} >= {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::Index(expr, index) => write!(f, "{} [ {} ]", expr.as_ref(), index.as_ref()),
             Expr::Int(_) => write!(f, "num"),
             Expr::Float(_) => write!(f, "num"),
             Expr::Boolean(b) => write!(f, "{}", b),
@@ -312,14 +257,14 @@ impl fmt::Display for Expr {
             Expr::Assign(_, value, indices) => {
                 if let Some(indices) = indices {
                     let index_str = indices.iter().map(|_| " [ id ]").collect::<String>();
-                    write!(f, "id{} = {}", index_str, print_ast(value.as_ref()))
+                    write!(f, "id{} = {}", index_str, value.as_ref())
                 } else {
-                    write!(f, "id = {}", print_ast(value.as_ref()))
+                    write!(f, "id = {}", value.as_ref())
                 }
             }
-            Expr::Declare(types, _) => write!(f, "{} id", print_ast(types)),
-            Expr::Group(expr) => write!(f, "( {} )", print_ast(expr.as_ref())),
-            Expr::Keyword(keyword) => write!(f, "{}", print_ast(keyword)),
+            Expr::Declare(types, _) => write!(f, "{} id", types),
+            Expr::Group(expr) => write!(f, "( {} )", expr.as_ref()),
+            Expr::Keyword(keyword) => write!(f, "{}", keyword),
         }
     }
 }
@@ -327,7 +272,7 @@ impl fmt::Display for Expr {
 impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Stmt::Expr(expr) => write!(f, "{}", print_ast(expr.as_ref())),
+            Stmt::Expr(expr) => write!(f, "{}", expr.as_ref()),
             Stmt::Block(stmts) => {
                 write!(f, "{{ ")?;
                 let mut first = true;
@@ -335,26 +280,16 @@ impl fmt::Display for Stmt {
                     if !first {
                         write!(f, " ; ")?;
                     }
-                    write!(f, "{}", print_ast(stmt))?;
+                    write!(f, "{}", stmt)?;
                     first = false;
                 }
                 write!(f, " }}")
             }
             Stmt::If(cond, body) => {
-                write!(f, "if ( {} ) {}", print_ast(cond), print_ast(body.as_ref()))
+                write!(f, "if {} {}", cond, body.as_ref())
             }
-            Stmt::While(cond, body) => write!(
-                f,
-                "while ( {} ) {}",
-                print_ast(cond),
-                print_ast(body.as_ref())
-            ),
-            Stmt::DoWhile(cond, body) => write!(
-                f,
-                "do {} while ( {} )",
-                print_ast(body.as_ref()),
-                print_ast(cond)
-            ),
+            Stmt::While(cond, body) => write!(f, "while ( {} ) {}", cond, body.as_ref()),
+            Stmt::DoWhile(cond, body) => write!(f, "do {} while ( {} )", body.as_ref(), cond),
         }
     }
 }
@@ -363,16 +298,10 @@ impl fmt::Display for StmtList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             StmtList::Stmt(stmts) => {
-                write!(f, "{{ ")?;
-                let mut first = true;
-                for stmt in stmts {
-                    if !first {
-                        write!(f, " ; ")?;
-                    }
-                    write!(f, "{}", print_ast(stmt))?;
-                    first = false;
-                }
-                write!(f, " }}")
+                let formatted_stmts: Vec<String> =
+                    stmts.iter().map(|stmt| format!("{}", stmt)).collect();
+
+                write!(f, "{}", formatted_stmts.join(" ; "))
             }
         }
     }
@@ -380,9 +309,9 @@ impl fmt::Display for StmtList {
 
 impl fmt::Display for Assignment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", print_ast(&self.types))?;
+        write!(f, "{}", &self.types)?;
         if let Some(expr) = &self.value {
-            write!(f, " = {}", print_ast(expr))?;
+            write!(f, " = {}", expr)?;
         }
         Ok(())
     }
@@ -625,10 +554,6 @@ where
         .map(StmtList::Stmt)
 }
 
-fn print_ast<T: fmt::Display>(item: &T) -> String {
-    format!("{}", item)
-}
-
 pub fn parse(src: &str) {
     let token_iter = Token::lexer(src).spanned().map(|(tok, span)| {
         let span = Into::<SimpleSpan<usize>>::into(span);
@@ -643,16 +568,22 @@ pub fn parse(src: &str) {
 
     match parser().parse(token_stream).into_result() {
         Ok(ast) => {
-            println!("{}\n", print_ast(&ast));
+            println!("{}\n", &ast);
 
             let chained_symbol_table: Arc<Mutex<ChainedSymbolTable<Assignment>>> = ast.into();
             let chained_symbol_table = chained_symbol_table.lock().unwrap();
             println!("Parsing completed successfully.\n");
             println!("Symbol Table:");
             println!("----");
-            for name in chained_symbol_table.symbols().iter().flatten() {
-                println!("ID: {}", name);
+
+            let mut seen = std::collections::HashSet::new();
+            for name in chained_symbol_table.symbols().iter().flatten().rev() {
+                if seen.insert(name.clone()) {
+                    // returns true if just inserted
+                    println!("ID: {}", name);
+                }
             }
+
             println!("----");
         }
         Err(errs) => {

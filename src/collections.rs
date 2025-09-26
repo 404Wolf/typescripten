@@ -57,13 +57,11 @@ impl<T> ChainedSymbolTable<T> {
     pub fn symbols(&self) -> LinkedList<LinkedList<String>> {
         let mut result = LinkedList::new();
 
-        // Add current scope's symbols
         let mut current_symbols = LinkedList::new();
 
         current_symbols.extend(self.symbols.keys().cloned());
         result.push_back(current_symbols);
 
-        // Add child scopes recursively
         for child in &self.children {
             if let Ok(child_table) = child.lock() {
                 let child_symbols = child_table.symbols();
