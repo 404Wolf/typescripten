@@ -6,9 +6,7 @@ use chumsky::{
 use logos::Logos;
 use rayon::prelude::*;
 use std::{
-    collections::LinkedList,
-    fmt,
-    sync::{Arc, Mutex},
+    collections::LinkedList, fmt, ops::IndexMut, sync::{Arc, Mutex}
 };
 
 use crate::collections::ChainedSymbolTable;
@@ -180,6 +178,7 @@ enum Expr {
     LEq(Box<Expr>, Box<Expr>),
     GT(Box<Expr>, Box<Expr>),
     GEq(Box<Expr>, Box<Expr>),
+    Index(Box<Expr>, Box<Expr>),
     Int(f64),
     Float(f64),
     Boolean(bool),
@@ -271,12 +270,12 @@ where
     };
 
     let array_dimensions = select! {
-        Token::Int(n) => Some(n.parse::<isize>().unwrap()) // ideally handle error better
+        Token::Int(n) => Some(n.parse::<isize>().unwrap())
     }
-        .or_not() // handles empty []
+        .or_not()
         .delimited_by(just(Token::LBracket), just(Token::RBracket))
         .repeated()
-        .collect::<Vec<_>>(); // use Vec for easier folding
+        .collect::<Vec<_>>();
 
     let declaration = select! {
         Token::IntType => Types::Int,
@@ -300,22 +299,42 @@ where
         );
 
     let expr = recursive(|expr| {
-        let assignment = select! { Token::ID(s) => s.to_string() }
+        let parenthesized = expr
+            .clone()
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .map(|s| Expr::Group(Box::new(s)));
+
+        let term = atom.or(parenthesized.clone());
+
+        let indexing = expr.clone()
+            .delimited_by(just(Token::LBracket), just(Token::RBracket))
+            .repeated()
+            .at_least(1)
+            .collect::<Vec<_>>();
+
+        let indexed = term.clone()
+            .then(indexing)
+            .map(|(exp, indices)| 
+                    indices.iter()
+                        .fold(
+                            exp,
+                            |acc, index| Expr::Index(acc.into(), (*index).clone().into())
+                        )
+            );
+
+        let assignment = select! {
+                Token::ID(s) => s.to_string(),
+            }.or(indexed.clone().map(|_| "The Index".to_string()))
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
             .map(|(name, expr)| Expr::Assign(name, Box::new(expr)));
 
-        let parenthesized = expr
-            .clone()
-            .delimited_by(just(Token::LParen), just(Token::RParen))
-            .map(|s| Expr::Group(s.into()));
+        let iterm = term.clone().or(indexed.clone());
 
-        let term = atom.or(parenthesized.clone());
-
-        let multiplication = term.clone().foldl(
+        let multiplication = iterm.clone().foldl(
             just(Token::Mul)
                 .or(just(Token::Div))
-                .then(term.clone())
+                .then(iterm.clone())
                 .repeated()
                 .at_least(1),
             |lhs, (op, rhs)| match op {
@@ -325,7 +344,7 @@ where
             },
         );
 
-        let mterm = multiplication.clone().or(term.clone());
+        let mterm = multiplication.clone().or(iterm.clone());
 
         let addition = mterm.clone().foldl(
             just(Token::Add)
@@ -368,8 +387,8 @@ where
             .or(multiplication)
             .or(addition)
             .or(comparisons)
-            .or(parenthesized)
-            .or(atom)
+            .or(indexed)
+            .or(term)
     });
 
     let statement = expr

@@ -1,9 +1,9 @@
 {  
     int i; int j; float v; float x; float[][70][50] a;
     while ( true ) {
-        do i = i + 1 ; while ( ai < v ) ;
+        do i = i + 1 ; while ( a[i] < v ) ;
         do j = j - 1 ; while ( aj > v ) ;
         if ( i >= j ) break ;
-        x = a; a = a; a = x;
+        x[3] = z; a = a; a = x;
     }
 }
