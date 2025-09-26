@@ -4,6 +4,7 @@ use chumsky::{
     prelude::*,
 };
 use logos::Logos;
+use rayon::prelude::*;
 use std::{
     collections::LinkedList,
     fmt,
@@ -214,10 +215,9 @@ impl<'a> Into<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
                         Stmt::Block(block_stmts) => {
                             let child_scope = ChainedSymbolTable::add_child(symbol_table);
 
-                            // Process statements in the child scope
-                            for stmt in block_stmts {
-                                process_stmt(stmt, &child_scope);
-                            }
+                            block_stmts
+                                .into_par_iter()
+                                .for_each(|stmt| process_stmt(stmt, &child_scope))
                         }
                     }
                 }
