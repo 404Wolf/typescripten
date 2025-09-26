@@ -3,7 +3,7 @@ use chumsky::{
     prelude::*,
 };
 use logos::Logos;
-use std::fmt;
+use std::{collections::LinkedList, fmt};
 
 #[derive(Logos, Clone, PartialEq)]
 enum Token<'a> {
@@ -141,101 +141,126 @@ impl fmt::Display for Token<'_> {
 }
 
 #[derive(Clone, Debug)]
-enum SExpr {
-    Add(Box<SExpr>, Box<SExpr>),
-    Sub(Box<SExpr>, Box<SExpr>),
-    Mul(Box<SExpr>, Box<SExpr>),
-    Div(Box<SExpr>, Box<SExpr>),
+enum Types {
+    Int,
+    Float,
+    Boolean,
+}
+
+#[derive(Clone, Debug)]
+enum Expr {
+    Add(Box<Expr>, Box<Expr>),
+    Sub(Box<Expr>, Box<Expr>),
+    Mul(Box<Expr>, Box<Expr>),
+    Div(Box<Expr>, Box<Expr>),
     Int(f64),
     Float(f64),
     Boolean(bool),
     ID(String),
-    Assign(String, Box<SExpr>),
+    Assign(String, Box<Expr>),
+    Declare(Types, String),
+    Group(Box<Expr>),
+}
+
+#[derive(Clone, Debug)]
+enum Stmt {
+    Expr(Box<Expr>),
+    Block(LinkedList<Stmt>),
+}
+
+#[derive(Clone, Debug)]
+enum File {
+    Stmt(LinkedList<Stmt>),
 }
 
 fn parser<'tokens, 'src: 'tokens, I>()
--> impl Parser<'tokens, I, SExpr, extra::Err<Rich<'tokens, Token<'src>>>>
+-> impl Parser<'tokens, I, File, extra::Err<Rich<'tokens, Token<'src>>>>
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = SimpleSpan>,
 {
-    recursive(|sexpr| {
-        let atom = select! {
-            Token::Int(n) => SExpr::Int(n.parse().unwrap()),
-            Token::Float(f) => SExpr::Float(f.parse().unwrap()),
-            Token::Boolean(b) => SExpr::Boolean(b.parse().unwrap()),
-            Token::ID(s) => SExpr::ID(s.to_string()),
-        };
 
+    let atom = select! {
+        Token::Int(n) => Expr::Int(n.parse().unwrap()),
+        Token::Float(f) => Expr::Float(f.parse().unwrap()),
+        Token::Boolean(b) => Expr::Boolean(b.parse().unwrap()),
+        Token::ID(s) => Expr::ID(s.to_string()),
+    };
+
+    let declaration = 
+        select! {
+            Token::IntType => Types::Int,
+            Token::FloatType => Types::Float,
+            Token::BooleanType => Types::Boolean,
+        }
+        .then(
+            select! { Token::ID(s) => s.to_string() }
+        )
+        .map(|(a, b)| Expr::Declare(a, b));
+
+    let expr = recursive(|sexpr| {
         let assignment = select! { Token::ID(s) => s.to_string() }
             .then_ignore(just(Token::Assign))
             .then(sexpr.clone())
-            .map(|(name, expr)| SExpr::Assign(name, Box::new(expr)));
+            .map(|(name, expr)| Expr::Assign(name, Box::new(expr)));
 
-        let addition = sexpr.clone().foldl(
-            just(Token::Add)
-                .or(just(Token::Sub))
-                .then(sexpr.clone())
+        let parenthesized = sexpr.clone()
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            .map(|s| Expr::Group(s.into()));
+
+        let term = atom.or(parenthesized.clone());
+
+        let multiplication = term.clone().foldl(
+            just(Token::Mul)
+                .or(just(Token::Div))
+                .then(term.clone())
                 .repeated()
                 .at_least(1),
             |lhs, (op, rhs)| match op {
-                Token::Add => SExpr::Add(Box::new(lhs), Box::new(rhs)),
-                Token::Sub => SExpr::Sub(Box::new(lhs), Box::new(rhs)),
+                Token::Mul => Expr::Mul(lhs.into(), rhs.into()),
+                Token::Div => Expr::Div(lhs.into(), rhs.into()),
                 _ => unreachable!("unexpected operator"),
             },
         );
 
-        // recursive(|expr| {
-        //     // Atomic expressions (leaf nodes in AST)
-        //     let atom = select! {
-        //         Token::Int(n) => SExpr::Int(n.parse().unwrap()),
-        //         Token::Float(f) => SExpr::Float(f.parse().unwrap()),
-        //         Token::Boolean(b) => SExpr::Boolean(b.parse().unwrap()),
-        //         Token::ID(s) => SExpr::ID(s.to_string()),
-        //     };
-        //
-        //     // Parenthesized expressions
-        //     let parenthesized = just(Token::LParen)
-        //         .ignore_then(expr.clone())
-        //         .then_ignore(just(Token::RParen));
-        //
-        //     // Primary expressions are either atoms or parenthesized expressions
-        //     let primary = atom.or(parenthesized);
-        //
-        //     // Assignment expressions
-        //     let assignment = select! { Token::ID(s) => s.to_string() }
-        //         .then_ignore(just(Token::Assign))
-        //         .then(expr.clone())
-        //         .map(|(name, expr)| SExpr::Assign(name, Box::new(expr)));
-        //
-        //     // Term expressions (multiplication and division)
-        //     let term = primary.clone().foldl(
-        //         just(Token::Mul)
-        //             .or(just(Token::Div))
-        //             .then(primary)
-        //             .repeated(),
-        //         |lhs, (op, rhs)| match op {
-        //             Token::Mul => SExpr::Mul(Box::new(lhs), Box::new(rhs)),
-        //             Token::Div => SExpr::Div(Box::new(lhs), Box::new(rhs)),
-        //             _ => unreachable!("unexpected operator"),
-        //         },
-        //     );
-        //
-        //     // Expression expressions (addition and subtraction)
-        //     let expression = term.clone().foldl(
-        //         just(Token::Add).or(just(Token::Sub)).then(term).repeated(),
-        //         |lhs, (op, rhs)| match op {
-        //             Token::Add => SExpr::Add(Box::new(lhs), Box::new(rhs)),
-        //             Token::Sub => SExpr::Sub(Box::new(lhs), Box::new(rhs)),
-        //             _ => unreachable!("unexpected operator"),
-        //         },
-        //     );
-        //
-        //     // Final parser: try assignment first, then expressions
-        //     assignment.or(expression)
-        // })
+        let mterm = multiplication.clone().or(term.clone());
 
-        atom.or(assignment).or(addition)
-    })
+        let addition = mterm.clone()
+            .foldl(
+                just(Token::Add)
+                    .or(just(Token::Sub))
+                    .then(mterm.clone())
+                    .repeated()
+                    .at_least(1),
+                |lhs, (op, rhs)| match op {
+                    Token::Add => Expr::Add(lhs.into(), rhs.into()),
+                    Token::Sub => Expr::Sub(lhs.into(), rhs.into()),
+                    _ => unreachable!("unexpected operator"),
+                },
+            );
+
+        declaration.or(assignment).or(multiplication).or(addition).or(parenthesized).or(atom)
+    });
+
+    let statement = expr
+        // Multiple terminators allowed
+        .then_ignore(just(Token::Terminator).repeated())
+        .map(|e| Stmt::Expr(e.into()));
+
+    let block = recursive(|blk|
+        statement.clone().or(blk)
+            .repeated()
+            .collect::<LinkedList<_>>()
+            .delimited_by(
+                just(Token::LBrace), 
+                just(Token::RBrace)
+            )
+            .map(Stmt::Block)
+    );
+
+    block.or(statement.clone())
+        .repeated()
+        .collect::<LinkedList<_>>()
+        .map(File::Stmt)
 }
 
 pub fn parse(src: &str) {
