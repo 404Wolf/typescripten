@@ -169,16 +169,15 @@ enum Stmt {
 }
 
 #[derive(Clone, Debug)]
-enum File {
+enum StmtList {
     Stmt(LinkedList<Stmt>),
 }
 
 fn parser<'tokens, 'src: 'tokens, I>()
--> impl Parser<'tokens, I, File, extra::Err<Rich<'tokens, Token<'src>>>>
+-> impl Parser<'tokens, I, StmtList, extra::Err<Rich<'tokens, Token<'src>>>>
 where
     I: ValueInput<'tokens, Token = Token<'src>, Span = SimpleSpan>,
 {
-
     let atom = select! {
         Token::Int(n) => Expr::Int(n.parse().unwrap()),
         Token::Float(f) => Expr::Float(f.parse().unwrap()),
@@ -186,24 +185,22 @@ where
         Token::ID(s) => Expr::ID(s.to_string()),
     };
 
-    let declaration = 
-        select! {
-            Token::IntType => Types::Int,
-            Token::FloatType => Types::Float,
-            Token::BooleanType => Types::Boolean,
-        }
-        .then(
-            select! { Token::ID(s) => s.to_string() }
-        )
-        .map(|(a, b)| Expr::Declare(a, b));
+    let declaration = select! {
+        Token::IntType => Types::Int,
+        Token::FloatType => Types::Float,
+        Token::BooleanType => Types::Boolean,
+    }
+    .then(select! { Token::ID(s) => s.to_string() })
+    .map(|(a, b)| Expr::Declare(a, b));
 
-    let expr = recursive(|sexpr| {
+    let expr = recursive(|expr| {
         let assignment = select! { Token::ID(s) => s.to_string() }
             .then_ignore(just(Token::Assign))
-            .then(sexpr.clone())
+            .then(expr.clone())
             .map(|(name, expr)| Expr::Assign(name, Box::new(expr)));
 
-        let parenthesized = sexpr.clone()
+        let parenthesized = expr
+            .clone()
             .delimited_by(just(Token::LParen), just(Token::RParen))
             .map(|s| Expr::Group(s.into()));
 
@@ -224,21 +221,25 @@ where
 
         let mterm = multiplication.clone().or(term.clone());
 
-        let addition = mterm.clone()
-            .foldl(
-                just(Token::Add)
-                    .or(just(Token::Sub))
-                    .then(mterm.clone())
-                    .repeated()
-                    .at_least(1),
-                |lhs, (op, rhs)| match op {
-                    Token::Add => Expr::Add(lhs.into(), rhs.into()),
-                    Token::Sub => Expr::Sub(lhs.into(), rhs.into()),
-                    _ => unreachable!("unexpected operator"),
-                },
-            );
+        let addition = mterm.clone().foldl(
+            just(Token::Add)
+                .or(just(Token::Sub))
+                .then(mterm.clone())
+                .repeated()
+                .at_least(1),
+            |lhs, (op, rhs)| match op {
+                Token::Add => Expr::Add(lhs.into(), rhs.into()),
+                Token::Sub => Expr::Sub(lhs.into(), rhs.into()),
+                _ => unreachable!("unexpected operator"),
+            },
+        );
 
-        declaration.or(assignment).or(multiplication).or(addition).or(parenthesized).or(atom)
+        declaration
+            .or(assignment)
+            .or(multiplication)
+            .or(addition)
+            .or(parenthesized)
+            .or(atom)
     });
 
     let statement = expr
@@ -246,21 +247,21 @@ where
         .then_ignore(just(Token::Terminator).repeated())
         .map(|e| Stmt::Expr(e.into()));
 
-    let block = recursive(|blk|
-        statement.clone().or(blk)
+    let block = recursive(|blk| {
+        statement
+            .clone()
+            .or(blk)
             .repeated()
             .collect::<LinkedList<_>>()
-            .delimited_by(
-                just(Token::LBrace), 
-                just(Token::RBrace)
-            )
+            .delimited_by(just(Token::LBrace), just(Token::RBrace))
             .map(Stmt::Block)
-    );
+    });
 
-    block.or(statement.clone())
+    block
+        .or(statement.clone())
         .repeated()
         .collect::<LinkedList<_>>()
-        .map(File::Stmt)
+        .map(StmtList::Stmt)
 }
 
 pub fn parse(src: &str) {
@@ -271,10 +272,6 @@ pub fn parse(src: &str) {
             Err(()) => (Token::Error, span),
         }
     });
-    println!("Tokens:");
-    for (t, s) in token_iter.clone() {
-        println!("  {}: {}", s, t);
-    }
 
     let token_stream =
         Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
