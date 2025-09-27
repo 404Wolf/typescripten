@@ -74,6 +74,7 @@
           treefmtconfig.config.build.wrapper;
         packages = rec {
           build = pkgs.callPackage ./nix/build.nix { inherit toolchain; };
+          docker = pkgs.callPackage ./nix/docker.nix { app = build; };
           default = build;
         };
       }
