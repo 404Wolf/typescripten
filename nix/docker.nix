@@ -8,7 +8,7 @@ pkgs.dockerTools.buildImage {
     pathsToLink = [ "/bin" ];
   };
   config = {
-    Entrypoint = [ "compiler" ];
+    Entrypoint = [ "compiler" "-" ];
     WorkingDir = "${app}";
   };
 }
