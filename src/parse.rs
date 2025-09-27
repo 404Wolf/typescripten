@@ -288,8 +288,8 @@ impl fmt::Display for Stmt {
             Stmt::If(cond, body) => {
                 write!(f, "if {} {}", cond, body.as_ref())
             }
-            Stmt::While(cond, body) => write!(f, "while ( {} ) {}", cond, body.as_ref()),
-            Stmt::DoWhile(cond, body) => write!(f, "do {} while ( {} )", body.as_ref(), cond),
+            Stmt::While(cond, body) => write!(f, "while {} {}", cond, body.as_ref()),
+            Stmt::DoWhile(cond, body) => write!(f, "do {} ; while {}", body.as_ref(), cond),
         }
     }
 }
