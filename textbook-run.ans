@@ -1,0 +1,13 @@
+{ basic id ; basic id ; basic id ; basic id ; basic [ num ] id ; while ( true ) { do id = id + num ; while ( id [ id ] < id ) ; do id = id - num ; while ( id [ id ] > id ) ; if ( id >= id ) break ; id = id [ id ] ; id [ id ] = id [ id ] ; id [ id ] = id } }
+
+Parsing completed successfully.
+
+Symbol Table:
+----
+ID: j
+ID: i
+ID: x
+ID: a
+ID: v
+----
+
