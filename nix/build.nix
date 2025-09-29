@@ -31,7 +31,7 @@ rustPlatform.buildRustPackage {
     libxml2
     zlib
     llvm
-    # llvmPackages.libcxx
+    llvmPackages.libcxx
     # stdenv.cc.cc.lib
   ] ++ (if static then [
     musl
@@ -48,11 +48,4 @@ rustPlatform.buildRustPackage {
   '';
 
   cargoBuildFlags = lib.optional static "--target=x86_64-unknown-linux-musl";
-
-
-
-  # RUSTFLAGS = if static then "-C linker=musl-gcc -C target-feature=+crt-static" else "";
-  # CARGO_BUILD_TARGET = if static then "x86_64-unknown-linux-musl" else "";
-  # LLVM_SYS_150_PREFIX="${llvm_dev}";
-  # NIX_LDFLAGS = "-L${libffi.out}/lib -lffi";
 }
