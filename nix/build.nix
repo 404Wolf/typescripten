@@ -1,10 +1,16 @@
 {
+  lib,
   rustPlatform,
   libxml2,
   libffi,
   zlib,
-  libllvm,
+  llvm,
+  llvmPackages,
+  llvm_dev,
   stdenv,
+  pkgsMusl,
+  musl,
+  static ? false,
   ...
 }:
 rustPlatform.buildRustPackage {
@@ -16,13 +22,37 @@ rustPlatform.buildRustPackage {
     lockFile = ../Cargo.lock;
   };
 
+  # nativeBuildInputs = [
+  #   pkg-config
+  #   toolchain
+  # ];
+
   buildInputs = [
     libxml2
     zlib
-    libllvm
-    stdenv.cc.cc.lib
-  ];
+    llvm
+    # llvmPackages.libcxx
+    # stdenv.cc.cc.lib
+  ] ++ (if static then [
+    musl
+    musl.dev
+  ] else []);
 
-  LLVM_SYS_150_PREFIX = "${libllvm.dev}";
-  NIX_LDFLAGS = "-L${libffi.out}/lib -lffi";
+  preBuild = ''
+    export LLVM_SYS_150_PREFIX="${llvm_dev}"
+    export NIX_LDFLAGS="-L${libffi.out}/lib -lffi"
+    ${if static then ''
+      export CARGO_BUILD_TARGET="x86_64-unknown-linux-musl"
+      export RUSTFLAGS="-C linker=musl-gcc -C target-feature=+crt-static"
+    '' else ""}
+  '';
+
+  cargoBuildFlags = lib.optional static "--target=x86_64-unknown-linux-musl";
+
+
+
+  # RUSTFLAGS = if static then "-C linker=musl-gcc -C target-feature=+crt-static" else "";
+  # CARGO_BUILD_TARGET = if static then "x86_64-unknown-linux-musl" else "";
+  # LLVM_SYS_150_PREFIX="${llvm_dev}";
+  # NIX_LDFLAGS = "-L${libffi.out}/lib -lffi";
 }
