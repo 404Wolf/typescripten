@@ -70,7 +70,7 @@
             static = pkgs_static.callPackage ./nix/build.nix { static = true; };
           };
           docker = (pkgs.callPackage ./nix/docker.nix { app = build; }) // {
-            static = pkgs.callPackage ./nix/docker.nix { app = build.static; };
+            static = pkgs.callPackage ./nix/docker.nix { app = build.static; static = true; };
           };
           default = build;
         };
