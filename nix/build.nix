@@ -73,5 +73,4 @@ rustPlatform.buildRustPackage {
 
 
   cargoBuildFlags = lib.optional static "--target=x86_64-unknown-linux-musl";
-  doCheck = false;
 }
