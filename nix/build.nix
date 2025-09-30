@@ -36,10 +36,10 @@ in
 rustPlatform.buildRustPackage {
   pname = "compiler";
   version = "0.0.1";
-  src = ./..;
+  src = ./../src;
 
   cargoLock = {
-    lockFile = ../Cargo.lock;
+    lockFile = ../src/Cargo.lock;
   };
 
   nativeBuildInputs = [
@@ -71,6 +71,7 @@ rustPlatform.buildRustPackage {
     ''}
   '';
 
-
   cargoBuildFlags = lib.optional static "--target=x86_64-unknown-linux-musl";
+
+  meta.mainProgram = "compiler";
 }

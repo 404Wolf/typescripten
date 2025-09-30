@@ -66,11 +66,12 @@
           in
           treefmtconfig.config.build.wrapper;
         packages = rec {
-          build = pkgs.callPackage ./nix/build.nix { llvm_dev = pkgs.llvm.dev; };
-          build_static = pkgs_static.callPackage ./nix/build.nix {
-            static = true;
+          build = (pkgs.callPackage ./nix/build.nix { }) // {
+            static = pkgs_static.callPackage ./nix/build.nix { static = true; };
           };
-          docker = pkgs.callPackage ./nix/docker.nix { app = build; };
+          docker = (pkgs.callPackage ./nix/docker.nix { app = build; }) // {
+            static = pkgs.callPackage ./nix/docker.nix { app = build.static; };
+          };
           default = build;
         };
       }

@@ -1,14 +1,14 @@
-{ pkgs, app }:
-pkgs.dockerTools.buildImage {
+{ dockerTools, buildEnv, app, lib }:
+dockerTools.buildImage {
   name = "compiler";
   tag = "latest";
-  copyToRoot = pkgs.buildEnv {
+  copyToRoot = buildEnv {
     name = "compiler";
     paths = [ app ];
     pathsToLink = [ "/bin" ];
   };
   config = {
-    Entrypoint = [ "compiler" "-" ];
+    Entrypoint = [ (lib.getExe app) "-" ];
     WorkingDir = "${app}";
   };
 }
