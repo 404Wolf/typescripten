@@ -55,7 +55,8 @@ rustPlatform.buildRustPackage {
       export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:${static_libxml2.dev}/lib/pkgconfig"
 
       export PATH=${llvmPackages.clang}/bin:$PATH
-      export RUSTFLAGS="-C linker=${musl.dev}/bin/musl-clang -C target-feature=+crt-static -L ${llvmPackages.libcxx.out}/lib -L ${stdenv.cc.cc.lib}/lib -L ${zlib.static}/lib $(pkg-config --libs-only-L libxml-2.0)"
+      export REALGCC=${gcc}/bin/gcc
+      export RUSTFLAGS="-C linker=${musl.dev}/bin/musl-gcc -C target-feature=+crt-static -C link-args=-static -L ${llvmPackages.libcxx.out}/lib -L ${stdenv.cc.cc.lib}/lib -L ${zlib.static}/lib $(pkg-config --libs-only-L libxml-2.0)"
     '' else ""}
   '';
 
