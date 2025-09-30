@@ -56,9 +56,11 @@ rustPlatform.buildRustPackage {
 
       export PATH=${llvmPackages.clang}/bin:$PATH
       export REALGCC=${gcc}/bin/gcc
-      export RUSTFLAGS="-C linker=${musl.dev}/bin/musl-gcc -C target-feature=+crt-static -C link-args=-static -L ${llvmPackages.libcxx.out}/lib -L ${stdenv.cc.cc.lib}/lib -L ${zlib.static}/lib $(pkg-config --libs-only-L libxml-2.0)"
+      export RUSTFLAGS="-C linker=${musl.dev}/bin/musl-gcc -C target-feature=+crt-static -C link-args=-static -C link-args=-no-pie -L ${llvmPackages.libcxx.out}/lib -L ${stdenv.cc.cc.lib}/lib -L ${zlib.static}/lib $(pkg-config --libs-only-L libxml-2.0)"
     '' else ""}
   '';
+
+      # export RUSTFLAGS="-C linker=${gcc}/bin/gcc -C target-feature=+crt-static -C link-args=-static -C link-args=-no-pie -L ${musl.out}/lib -L ${llvmPackages.libcxx.out}/lib -L ${stdenv.cc.cc.lib}/lib -L ${zlib.static}/lib $(pkg-config --libs-only-L libxml-2.0)"
 
   cargoBuildFlags = lib.optional static "--target=x86_64-unknown-linux-musl";
   doCheck = false;
