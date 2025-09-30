@@ -6,11 +6,11 @@
   zlib,
   llvm,
   llvmPackages,
-  llvm_dev,
   stdenv,
   musl,
   gcc,
   pkg-config,
+  writeShellScriptBin,
   static ? false,
   ...
 }:
@@ -22,6 +22,16 @@ let
       "--without-lzma"
     ];
   }));
+  static_libffi = (libffi.overrideAttrs (old: {
+    configureFlags = (old.configureFlags or []) ++ [
+      "--enable-static"
+      "--disable-shared"
+      "--with-pic"
+    ];
+  }));
+  llvmWrapped = writeShellScriptBin "llvm-config" ''
+    exec ${llvm.dev}/bin/llvm-config "$@" | sed 's/-lrt//g; s/-ldl//g; s/-lm//g'
+  '';
 in
 rustPlatform.buildRustPackage {
   pname = "compiler";
@@ -48,19 +58,19 @@ rustPlatform.buildRustPackage {
   ]);
 
   preBuild = ''
-    export LLVM_SYS_150_PREFIX="${llvm_dev}"
-    export NIX_LDFLAGS="-L${libffi.out}/lib -lffi"
     ${if static then ''
+      export LLVM_SYS_150_PREFIX="${llvmWrapped}"
+      export NIX_LDFLAGS="-L${static_libffi.out}/lib -lffi"
       export PKG_CONFIG_ALL_STATIC=1
       export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:${static_libxml2.dev}/lib/pkgconfig"
 
-      export PATH=${llvmPackages.clang}/bin:$PATH
-      export REALGCC=${gcc}/bin/gcc
-      export RUSTFLAGS="-C linker=${musl.dev}/bin/musl-gcc -C target-feature=+crt-static -C link-args=-static -C link-args=-no-pie -L ${llvmPackages.libcxx.out}/lib -L ${stdenv.cc.cc.lib}/lib -L ${zlib.static}/lib $(pkg-config --libs-only-L libxml-2.0)"
-    '' else ""}
+      export RUSTFLAGS="-C target-feature=+crt-static -C relocation-model=static -L ${llvmPackages.libcxx.out}/lib -L ${stdenv.cc.cc.lib}/lib -L ${zlib.static}/lib $(pkg-config --libs-only-L libxml-2.0)"
+    '' else ''
+      export LLVM_SYS_150_PREFIX="${llvm.dev}"
+      export NIX_LDFLAGS="-L${libffi.out}/lib -lffi"
+    ''}
   '';
 
-      # export RUSTFLAGS="-C linker=${gcc}/bin/gcc -C target-feature=+crt-static -C link-args=-static -C link-args=-no-pie -L ${musl.out}/lib -L ${llvmPackages.libcxx.out}/lib -L ${stdenv.cc.cc.lib}/lib -L ${zlib.static}/lib $(pkg-config --libs-only-L libxml-2.0)"
 
   cargoBuildFlags = lib.optional static "--target=x86_64-unknown-linux-musl";
   doCheck = false;

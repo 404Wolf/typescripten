@@ -23,9 +23,6 @@
           inherit system;
           static = true;
         }).pkgsMusl;
-        llvmWrapped = pkgs_static.writeShellScriptBin "llvm-config" ''
-          exec ${pkgs_static.llvm.dev}/bin/llvm-config "$@" | sed 's/-lrt//g; s/-ldl//g; s/-lm//g'
-        '';
       in
       {
         devShells = rec {
@@ -72,7 +69,6 @@
           build = pkgs.callPackage ./nix/build.nix { llvm_dev = pkgs.llvm.dev; };
           build_static = pkgs_static.callPackage ./nix/build.nix {
             static = true;
-            llvm_dev = llvmWrapped;
           };
           docker = pkgs.callPackage ./nix/docker.nix { app = build; };
           default = build;
