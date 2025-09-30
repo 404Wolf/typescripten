@@ -4,10 +4,6 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    fenix = {
-      url = "github:nix-community/fenix/monthly";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -23,14 +19,10 @@
       system:
       let
         pkgs = import inputs.nixpkgs { inherit system; };
-        fenix_pkg = inputs.fenix.packages.${system};
-        rustComponents = [
-          "cargo"
-          "rust-src"
-          "rustc"
-          "rustfmt"
-        ];
-        toolchain = (fenix_pkg.complete.withComponents rustComponents);
+        pkgs_static = (import inputs.nixpkgs {
+          inherit system;
+          static = true;
+        }).pkgsMusl;
       in
       {
         devShells = rec {
@@ -47,12 +39,13 @@
                 nil
                 nixd
                 llvm
-                toolchain
-                fenix_pkg.rust-analyzer
+                llvm.dev
                 clang
+                toolchain
               ]
             );
             RUSTFLAGS = "-L ${pkgs.libffi}/lib -l ffi";
+            LLVM_SYS_150_PREFIX="${pkgs.llvm.dev}";
           };
           default = llvm-rs;
         };
@@ -73,7 +66,12 @@
           in
           treefmtconfig.config.build.wrapper;
         packages = rec {
-          build = pkgs.callPackage ./nix/build.nix { inherit toolchain; };
+          build = (pkgs.callPackage ./nix/build.nix { }) // {
+            static = pkgs_static.callPackage ./nix/build.nix { static = true; };
+          };
+          docker = (pkgs.callPackage ./nix/docker.nix { app = build; }) // {
+            static = pkgs.callPackage ./nix/docker.nix { app = build.static; static = true; };
+          };
           default = build;
         };
       }
