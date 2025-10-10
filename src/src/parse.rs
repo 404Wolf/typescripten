@@ -257,16 +257,19 @@ impl fmt::Display for Expr {
             Expr::GT(lhs, rhs) => write!(f, "{} > {}", lhs.as_ref(), rhs.as_ref()),
             Expr::GEq(lhs, rhs) => write!(f, "{} >= {}", lhs.as_ref(), rhs.as_ref()),
             Expr::Index(expr, index) => write!(f, "{} [ {} ]", expr.as_ref(), index.as_ref()),
-            Expr::Int(_) => write!(f, "num"),
-            Expr::Float(_) => write!(f, "num"),
-            Expr::Boolean(b) => write!(f, "{}", b),
-            Expr::ID(_) => write!(f, "id"),
-            Expr::Assign(_, value, indices) => {
+            Expr::Int(n) => write!(f, "(int: {})", n),
+            Expr::Float(n) => write!(f, "(float: {})", n),
+            Expr::Boolean(b) => write!(f, "(bool: {})", b),
+            Expr::ID(id) => write!(f, "(id: {})", id),
+            Expr::Assign(id, value, indices) => {
                 if let Some(indices) = indices {
-                    let index_str = indices.iter().map(|_| " [ id ]").collect::<String>();
-                    write!(f, "id{} = {}", index_str, value.as_ref())
+                    let index_str = indices
+                        .iter()
+                        .map(|idx| format!(" [ {} ]", idx))
+                        .collect::<String>();
+                    write!(f, "{}{} = {}", id, index_str, value.as_ref())
                 } else {
-                    write!(f, "id = {}", value.as_ref())
+                    write!(f, "{} = {}", id, value.as_ref())
                 }
             }
             Expr::Declare(types, _) => write!(f, "{} id", types),
@@ -480,11 +483,7 @@ where
             .clone()
             .delimited_by(just(Token::LBracket), just(Token::RBracket))
             .repeated()
-            .collect::<Vec<_>>()
-            .map(|indices| {
-                info!("Indexing -> {:?}", indices);
-                indices
-            });
+            .collect::<Vec<_>>();
 
         let indexed = term.clone().then(indexing.clone()).map(|(exp, indices)| {
             indices.iter().fold(exp, |acc, index| {
@@ -706,12 +705,16 @@ pub fn parse(src: &str) {
     let (ast, errs) = parser().parse(token_stream).into_output_errors();
 
     if let Some(ast) = ast {
+        println!("\nParsing completed successfully.\n");
+
+        println!("Lex tokens:");
         println!("{}\n", &ast);
+
+        println!("Full parse AST:");
+        println!("{:#?}\n", &ast);
 
         let chained_symbol_table: Arc<Mutex<ChainedSymbolTable<Assignment>>> = ast.into();
         let chained_symbol_table = chained_symbol_table.lock().unwrap();
-
-        println!("Parsing completed successfully.\n");
 
         println!("Symbol Table:");
         println!("{:#?}\n", chained_symbol_table);
