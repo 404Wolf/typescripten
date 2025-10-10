@@ -1,14 +1,14 @@
+[dependencies]
+ariadne = "0.5.1"
+chumsky = {version = "0.11.1", features = ["regex"]}
+clap = {version = "4.5.48", features = ["derive"]}
+env_logger = "0.11.8"
+inkwell = {version = "0.4", features = ["llvm15-0", "no-libffi-linking"]}
+log = "0.4.28"
+logos = "0.15.1"
+rayon = "1.11.0"
+
 [package]
 name = "compiler"
 version = "0.1.0"
 edition = "2024"
-
-[dependencies]
-ariadne = "0.5.1"
-chumsky = { version = "0.11.1", features = ["regex"] }
-clap = { version = "4.5.48", features = ["derive"] }
-env_logger = "0.11.8"
-inkwell = { version = "0.4", features = ["llvm15-0", "no-libffi-linking"] }
-log = "0.4.28"
-logos = "0.15.1"
-rayon = "1.11.0"
