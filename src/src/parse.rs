@@ -43,6 +43,8 @@ enum Token<'a> {
     Mul,
     #[token("/")]
     Div,
+    #[token("!")]
+    Not,
 
     // Grouping
     #[token("(")]
@@ -124,6 +126,7 @@ enum Expr {
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
     Div(Box<Expr>, Box<Expr>),
+    Not(Box<Expr>),
     Eql(Box<Expr>, Box<Expr>),
     NEq(Box<Expr>, Box<Expr>),
     LT(Box<Expr>, Box<Expr>),
@@ -176,6 +179,7 @@ impl fmt::Display for Token<'_> {
             Self::Sub => write!(f, "-"),
             Self::Mul => write!(f, "*"),
             Self::Div => write!(f, "/"),
+            Self::Not => write!(f, "!"),
 
             Self::LParen => write!(f, "("),
             Self::RParen => write!(f, ")"),
@@ -245,6 +249,7 @@ impl fmt::Display for Expr {
             Expr::Sub(lhs, rhs) => write!(f, "{} - {}", lhs.as_ref(), rhs.as_ref()),
             Expr::Mul(lhs, rhs) => write!(f, "{} * {}", lhs.as_ref(), rhs.as_ref()),
             Expr::Div(lhs, rhs) => write!(f, "{} / {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::Not(expr) => write!(f, "!{}", expr.as_ref()),
             Expr::Eql(lhs, rhs) => write!(f, "{} == {}", lhs.as_ref(), rhs.as_ref()),
             Expr::NEq(lhs, rhs) => write!(f, "{} != {}", lhs.as_ref(), rhs.as_ref()),
             Expr::LT(lhs, rhs) => write!(f, "{} < {}", lhs.as_ref(), rhs.as_ref()),
@@ -602,6 +607,11 @@ where
             .or(comparisons)
             .or(indexed)
             .or(term)
+            .or(just(Token::Not).then(expr.clone()).map(|(_, expr)| {
+                let result = Expr::Not(expr.into());
+                info!("Not -> {}", result);
+                result
+            }))
     });
 
     let statement = expr
@@ -694,7 +704,7 @@ pub fn parse(src: &str) {
         Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
 
     let (ast, errs) = parser().parse(token_stream).into_output_errors();
-    
+
     if let Some(ast) = ast {
         println!("{}\n", &ast);
 
@@ -708,7 +718,7 @@ pub fn parse(src: &str) {
 
         println!("----");
     }
-    
+
     errs.into_iter().for_each(|e| {
         Report::build(ReportKind::Error, ((), e.span().into_range()))
             .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
