@@ -293,7 +293,7 @@ impl fmt::Display for Stmt {
                     write!(f, "{}", stmt)?;
                     first = false;
                 }
-                write!(f, " }}")
+                write!(f, "; }}")
             }
             Stmt::If(cond, body) => {
                 write!(f, "if {} {}", cond, body.as_ref())
