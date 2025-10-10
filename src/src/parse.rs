@@ -710,26 +710,24 @@ pub fn parse(src: &str) {
 
         let chained_symbol_table: Arc<Mutex<ChainedSymbolTable<Assignment>>> = ast.into();
         let chained_symbol_table = chained_symbol_table.lock().unwrap();
+
         println!("Parsing completed successfully.\n");
+
         println!("Symbol Table:");
-        println!("----");
-
-        println!("{:#?}", chained_symbol_table);
-
-        println!("----");
+        println!("{:#?}\n", chained_symbol_table);
+    } else {
+        errs.into_iter().for_each(|e| {
+            Report::build(ReportKind::Error, ((), e.span().into_range()))
+                .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+                .with_message(e.to_string())
+                .with_label(
+                    Label::new(((), e.span().into_range()))
+                        .with_message(e.reason().to_string())
+                        .with_color(Color::Red),
+                )
+                .finish()
+                .print(Source::from(&src))
+                .unwrap()
+        });
     }
-
-    errs.into_iter().for_each(|e| {
-        Report::build(ReportKind::Error, ((), e.span().into_range()))
-            .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
-            .with_message(e.to_string())
-            .with_label(
-                Label::new(((), e.span().into_range()))
-                    .with_message(e.reason().to_string())
-                    .with_color(Color::Red),
-            )
-            .finish()
-            .print(Source::from(&src))
-            .unwrap()
-    });
 }
