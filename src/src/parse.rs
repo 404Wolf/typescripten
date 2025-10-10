@@ -702,13 +702,7 @@ pub fn parse(src: &str) {
             println!("Symbol Table:");
             println!("----");
 
-            let mut seen = std::collections::HashSet::new();
-            for name in chained_symbol_table.symbols().iter().flatten().rev() {
-                if seen.insert(name.clone()) {
-                    // returns true if just inserted
-                    println!("ID: {}", name);
-                }
-            }
+            println!("{:#?}", &*chained_symbol_table);
 
             println!("----");
         }

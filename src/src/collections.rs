@@ -2,7 +2,6 @@ use std::collections::{HashMap, LinkedList};
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-#[derive(Debug)]
 pub struct ChainedSymbolTable<T> {
     parent: Option<Arc<Mutex<ChainedSymbolTable<T>>>>,
     children: LinkedList<Arc<Mutex<ChainedSymbolTable<T>>>>,
@@ -70,5 +69,31 @@ impl<T> ChainedSymbolTable<T> {
         }
 
         result
+    }
+}
+
+impl<T> fmt::Debug for ChainedSymbolTable<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_with_indent(f, 2)
+    }
+}
+
+impl<T> ChainedSymbolTable<T> {
+    fn fmt_with_indent(&self, f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
+        let indent_str = "  ".repeat(indent);
+        let symbols: Vec<String> = self.symbols.keys().cloned().collect();
+
+        writeln!(f, "{}ChainedSymbolTable {{", indent_str)?;
+        writeln!(f, "{}  symbols: {:?}", indent_str, symbols)?;
+        writeln!(f, "{}  children: [", indent_str)?;
+
+        for child in &self.children {
+            if let Ok(child_table) = child.lock() {
+                child_table.fmt_with_indent(f, indent + 2)?;
+            }
+        }
+
+        writeln!(f, "{}  ]", indent_str)?;
+        write!(f, "{}}}", indent_str)
     }
 }
