@@ -2,19 +2,31 @@ use std::collections::{HashMap, LinkedList};
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-pub struct ChainedSymbolTable<T> {
+pub trait SymbolValue: fmt::Debug + Clone + Send {}
+impl<T: fmt::Debug + Clone + Send> SymbolValue for T {}
+
+pub struct ChainedSymbolTable<T>
+where
+    T: SymbolValue,
+{
     parent: Option<Arc<Mutex<ChainedSymbolTable<T>>>>,
     children: LinkedList<Arc<Mutex<ChainedSymbolTable<T>>>>,
     symbols: HashMap<String, T>,
 }
 
-impl<T> Default for ChainedSymbolTable<T> {
+impl<T> Default for ChainedSymbolTable<T>
+where
+    T: SymbolValue,
+{
     fn default() -> Self {
         Self::new(None)
     }
 }
 
-impl<T> ChainedSymbolTable<T> {
+impl<T> ChainedSymbolTable<T>
+where
+    T: SymbolValue,
+{
     pub fn new(parent: Option<Arc<Mutex<ChainedSymbolTable<T>>>>) -> Self {
         Self {
             parent,
@@ -72,28 +84,64 @@ impl<T> ChainedSymbolTable<T> {
     }
 }
 
-impl<T> fmt::Debug for ChainedSymbolTable<T> {
+impl<T> fmt::Debug for ChainedSymbolTable<T>
+where
+    T: SymbolValue,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.fmt_with_indent(f, 2)
+        self.fmt_with_indent(f, 0, true)
     }
 }
 
-impl<T> ChainedSymbolTable<T> {
-    fn fmt_with_indent(&self, f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
+impl<T> ChainedSymbolTable<T>
+where
+    T: SymbolValue,
+{
+    fn fmt_with_indent(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        indent: usize,
+        is_root: bool,
+    ) -> fmt::Result {
         let indent_str = "  ".repeat(indent);
-        let symbols: Vec<String> = self.symbols.keys().cloned().collect();
 
-        writeln!(f, "{}ChainedSymbolTable {{", indent_str)?;
-        writeln!(f, "{}  symbols: {:?}", indent_str, symbols)?;
-        writeln!(f, "{}  children: [", indent_str)?;
+        let symbols: Vec<String> = self
+            .symbols
+            .iter()
+            // Note we do a Debug print on the values!
+            .map(|(k, v)| format!("{}: {:?}", k, v))
+            .collect();
 
-        for child in &self.children {
-            if let Ok(child_table) = child.lock() {
-                child_table.fmt_with_indent(f, indent + 2)?;
-            }
+        if is_root {
+            writeln!(f, "{}ChainedSymbolTable {{", indent_str)?;
         }
 
-        writeln!(f, "{}  ]", indent_str)?;
-        write!(f, "{}}}", indent_str)
+        if symbols.is_empty() {
+            writeln!(f, "{}  symbols: []", indent_str)?;
+        } else {
+            writeln!(f, "{}  symbols: [", indent_str)?;
+            for symbol in &symbols {
+                writeln!(f, "{}    {}", indent_str, symbol)?;
+            }
+            writeln!(f, "{}  ]", indent_str)?;
+        }
+
+        if self.children.is_empty() {
+            writeln!(f, "{}  children: []", indent_str)?;
+        } else {
+            writeln!(f, "{}  children: [", indent_str)?;
+            for child in &self.children {
+                if let Ok(child_table) = child.lock() {
+                    child_table.fmt_with_indent(f, indent + 2, false)?;
+                }
+            }
+            writeln!(f, "{}  ]", indent_str)?;
+        }
+
+        if is_root {
+            write!(f, "{}}}", indent_str)
+        } else {
+            Ok(())
+        }
     }
 }

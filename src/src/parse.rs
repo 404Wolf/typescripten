@@ -702,7 +702,7 @@ pub fn parse(src: &str) {
             println!("Symbol Table:");
             println!("----");
 
-            println!("{:#?}", &*chained_symbol_table);
+            println!("{:#?}", chained_symbol_table);
 
             println!("----");
         }
