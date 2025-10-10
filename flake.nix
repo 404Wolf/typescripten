@@ -41,7 +41,6 @@
                 llvm
                 llvm.dev
                 clang
-                toolchain
               ]
             );
             RUSTFLAGS = "-L ${pkgs.libffi}/lib -l ffi";
