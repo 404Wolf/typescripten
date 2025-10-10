@@ -1,3 +1,4 @@
+use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::{
     input::{Stream, ValueInput},
     prelude::*,
@@ -623,7 +624,7 @@ where
             result
         }))
         // Multiple terminators allowed
-        .then_ignore(just(Token::Terminator).repeated())
+        .then_ignore(just(Token::Terminator).repeated().at_least(1))
         .map(|e| Stmt::Expr(e.into()));
 
     let block = recursive(|blk| {
@@ -692,24 +693,33 @@ pub fn parse(src: &str) {
     let token_stream =
         Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
 
-    match parser().parse(token_stream).into_result() {
-        Ok(ast) => {
-            println!("{}\n", &ast);
+    let (ast, errs) = parser().parse(token_stream).into_output_errors();
+    
+    if let Some(ast) = ast {
+        println!("{}\n", &ast);
 
-            let chained_symbol_table: Arc<Mutex<ChainedSymbolTable<Assignment>>> = ast.into();
-            let chained_symbol_table = chained_symbol_table.lock().unwrap();
-            println!("Parsing completed successfully.\n");
-            println!("Symbol Table:");
-            println!("----");
+        let chained_symbol_table: Arc<Mutex<ChainedSymbolTable<Assignment>>> = ast.into();
+        let chained_symbol_table = chained_symbol_table.lock().unwrap();
+        println!("Parsing completed successfully.\n");
+        println!("Symbol Table:");
+        println!("----");
 
-            println!("{:#?}", chained_symbol_table);
+        println!("{:#?}", chained_symbol_table);
 
-            println!("----");
-        }
-        Err(errs) => {
-            for e in errs {
-                eprintln!("Error: {}", e);
-            }
-        }
+        println!("----");
     }
+    
+    errs.into_iter().for_each(|e| {
+        Report::build(ReportKind::Error, ((), e.span().into_range()))
+            .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+            .with_message(e.to_string())
+            .with_label(
+                Label::new(((), e.span().into_range()))
+                    .with_message(e.reason().to_string())
+                    .with_color(Color::Red),
+            )
+            .finish()
+            .print(Source::from(&src))
+            .unwrap()
+    });
 }
