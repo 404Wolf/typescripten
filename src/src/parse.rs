@@ -1,7 +1,9 @@
+use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::{
     input::{Stream, ValueInput},
     prelude::*,
 };
+use log::info;
 use logos::Logos;
 use rayon::prelude::*;
 use std::{
@@ -41,6 +43,8 @@ enum Token<'a> {
     Mul,
     #[token("/")]
     Div,
+    #[token("!")]
+    Not,
 
     // Grouping
     #[token("(")]
@@ -122,6 +126,7 @@ enum Expr {
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
     Div(Box<Expr>, Box<Expr>),
+    Not(Box<Expr>),
     Eql(Box<Expr>, Box<Expr>),
     NEq(Box<Expr>, Box<Expr>),
     LT(Box<Expr>, Box<Expr>),
@@ -174,6 +179,7 @@ impl fmt::Display for Token<'_> {
             Self::Sub => write!(f, "-"),
             Self::Mul => write!(f, "*"),
             Self::Div => write!(f, "/"),
+            Self::Not => write!(f, "!"),
 
             Self::LParen => write!(f, "("),
             Self::RParen => write!(f, ")"),
@@ -243,6 +249,7 @@ impl fmt::Display for Expr {
             Expr::Sub(lhs, rhs) => write!(f, "{} - {}", lhs.as_ref(), rhs.as_ref()),
             Expr::Mul(lhs, rhs) => write!(f, "{} * {}", lhs.as_ref(), rhs.as_ref()),
             Expr::Div(lhs, rhs) => write!(f, "{} / {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::Not(expr) => write!(f, "!{}", expr.as_ref()),
             Expr::Eql(lhs, rhs) => write!(f, "{} == {}", lhs.as_ref(), rhs.as_ref()),
             Expr::NEq(lhs, rhs) => write!(f, "{} != {}", lhs.as_ref(), rhs.as_ref()),
             Expr::LT(lhs, rhs) => write!(f, "{} < {}", lhs.as_ref(), rhs.as_ref()),
@@ -250,16 +257,19 @@ impl fmt::Display for Expr {
             Expr::GT(lhs, rhs) => write!(f, "{} > {}", lhs.as_ref(), rhs.as_ref()),
             Expr::GEq(lhs, rhs) => write!(f, "{} >= {}", lhs.as_ref(), rhs.as_ref()),
             Expr::Index(expr, index) => write!(f, "{} [ {} ]", expr.as_ref(), index.as_ref()),
-            Expr::Int(_) => write!(f, "num"),
-            Expr::Float(_) => write!(f, "num"),
-            Expr::Boolean(b) => write!(f, "{}", b),
-            Expr::ID(_) => write!(f, "id"),
-            Expr::Assign(_, value, indices) => {
+            Expr::Int(n) => write!(f, "(int: {})", n),
+            Expr::Float(n) => write!(f, "(float: {})", n),
+            Expr::Boolean(b) => write!(f, "(bool: {})", b),
+            Expr::ID(id) => write!(f, "(id: {})", id),
+            Expr::Assign(id, value, indices) => {
                 if let Some(indices) = indices {
-                    let index_str = indices.iter().map(|_| " [ id ]").collect::<String>();
-                    write!(f, "id{} = {}", index_str, value.as_ref())
+                    let index_str = indices
+                        .iter()
+                        .map(|idx| format!(" [ {} ]", idx))
+                        .collect::<String>();
+                    write!(f, "{}{} = {}", id, index_str, value.as_ref())
                 } else {
-                    write!(f, "id = {}", value.as_ref())
+                    write!(f, "{} = {}", id, value.as_ref())
                 }
             }
             Expr::Declare(types, _) => write!(f, "{} id", types),
@@ -283,7 +293,7 @@ impl fmt::Display for Stmt {
                     write!(f, "{}", stmt)?;
                     first = false;
                 }
-                write!(f, " }}")
+                write!(f, "; }}")
             }
             Stmt::If(cond, body) => {
                 write!(f, "if {} {}", cond, body.as_ref())
@@ -385,14 +395,34 @@ where
     I: ValueInput<'tokens, Token = Token<'src>, Span = SimpleSpan>,
 {
     let atom = select! {
-        Token::Int(n) => Expr::Int(n.parse().unwrap()),
-        Token::Float(f) => Expr::Float(f.parse().unwrap()),
-        Token::Boolean(b) => Expr::Boolean(b.parse().unwrap()),
-        Token::ID(s) => Expr::ID(s.to_string()),
+        Token::Int(n) => {
+            let result = Expr::Int(n.parse().unwrap());
+            info!("{} -> {}", n, result);
+            result
+        },
+        Token::Float(f) => {
+            let result = Expr::Float(f.parse().unwrap());
+            info!("{} -> {}", f, result);
+            result
+        },
+        Token::Boolean(b) => {
+            let result = Expr::Boolean(b.parse().unwrap());
+            info!("{} -> {}", b, result);
+            result
+        },
+        Token::ID(s) => {
+            let result = Expr::ID(s.to_string());
+            info!("{} -> {}", s, result);
+            result
+        },
     };
 
     let array_dimensions = select! {
-        Token::Int(n) => Some(n.parse::<isize>().unwrap())
+        Token::Int(n) => {
+            let result = Some(n.parse::<isize>().unwrap());
+         info!("{} -> {:?}", n, result);
+         result
+        }
     }
     .or_not()
     .delimited_by(just(Token::LBracket), just(Token::RBracket))
@@ -400,28 +430,52 @@ where
     .collect::<Vec<_>>();
 
     let declaration = select! {
-        Token::IntType => Types::Int,
-        Token::FloatType => Types::Float,
-        Token::BooleanType => Types::Boolean,
+        Token::IntType => {
+         let result = Types::Int;
+            info!("int -> {}", result);
+            result
+        },
+        Token::FloatType => {
+            let result = Types::Float;
+            info!("float -> {}", result);
+            result
+        },
+        Token::BooleanType => {
+            let result = Types::Boolean;
+            info!("boolean -> {}", result);
+            result
+        }
     }
     .then(array_dimensions.or_not())
     .then(select! { Token::ID(s) => s.to_string() })
     .map(|((types, quantities), name)| match quantities {
-        Some(quantities) => Expr::Declare(
-            quantities.iter().fold(types, |acc, size| match size {
-                Some(Some(size)) => Types::Array(acc.into(), Some(*size)),
-                _ => Types::Array(acc.into(), None),
-            }),
-            name,
-        ),
-        None => Expr::Declare(types, name),
+        Some(quantities) => {
+            let result = Expr::Declare(
+                quantities.iter().fold(types, |acc, size| match size {
+                    Some(Some(size)) => Types::Array(acc.into(), Some(*size)),
+                    _ => Types::Array(acc.into(), None),
+                }),
+                name,
+            );
+            info!("Declare -> {}", result);
+            result
+        }
+        None => {
+            let result = Expr::Declare(types, name);
+            info!("Declare -> {}", result);
+            result
+        }
     });
 
     let expr = recursive(|expr| {
         let parenthesized = expr
             .clone()
             .delimited_by(just(Token::LParen), just(Token::RParen))
-            .map(|s| Expr::Group(Box::new(s)));
+            .map(|s| {
+                let result = Expr::Group(Box::new(s));
+                info!("Group -> {}", result);
+                result
+            });
 
         let term = atom.or(parenthesized.clone());
 
@@ -433,17 +487,26 @@ where
 
         let indexed = term.clone().then(indexing.clone()).map(|(exp, indices)| {
             indices.iter().fold(exp, |acc, index| {
+                info!("Indexing: {}[{}]", acc, index);
                 Expr::Index(acc.into(), (*index).clone().into())
             })
         });
 
         let assignment = select! {
-            Token::ID(s) => s.to_string(),
+                Token::ID(s) => {
+                let result = s.to_string();
+                info!("ID -> {}", result);
+                result
+            },
         }
         .then(indexing.clone().or_not())
         .then_ignore(just(Token::Assign))
         .then(expr.clone())
-        .map(|((name, index), expr)| Expr::Assign(name, Box::new(expr), index));
+        .map(|((name, index), expr)| {
+            let result = Expr::Assign(name, Box::new(expr), index);
+            info!("Assignment -> {}", result);
+            result
+        });
 
         let multiplication = indexed.clone().foldl(
             just(Token::Mul)
@@ -452,8 +515,16 @@ where
                 .repeated()
                 .at_least(1),
             |lhs, (op, rhs)| match op {
-                Token::Mul => Expr::Mul(lhs.into(), rhs.into()),
-                Token::Div => Expr::Div(lhs.into(), rhs.into()),
+                Token::Mul => {
+                    let result = Expr::Mul(lhs.into(), rhs.into());
+                    info!("Multiplication -> {}", result);
+                    result
+                }
+                Token::Div => {
+                    let result = Expr::Div(lhs.into(), rhs.into());
+                    info!("Division -> {}", result);
+                    result
+                }
                 _ => unreachable!("unexpected operator"),
             },
         );
@@ -467,8 +538,16 @@ where
                 .repeated()
                 .at_least(1),
             |lhs, (op, rhs)| match op {
-                Token::Add => Expr::Add(lhs.into(), rhs.into()),
-                Token::Sub => Expr::Sub(lhs.into(), rhs.into()),
+                Token::Add => {
+                    let result = Expr::Add(lhs.into(), rhs.into());
+                    info!("Addition -> {}", result);
+                    result
+                }
+                Token::Sub => {
+                    let result = Expr::Sub(lhs.into(), rhs.into());
+                    info!("Subtraction -> {}", result);
+                    result
+                }
                 _ => unreachable!("unexpected operator"),
             },
         );
@@ -486,12 +565,36 @@ where
                 .repeated()
                 .at_least(1),
             |lhs, (op, rhs)| match op {
-                Token::Equal => Expr::Eql(lhs.into(), rhs.into()),
-                Token::NotEqual => Expr::NEq(lhs.into(), rhs.into()),
-                Token::LessThan => Expr::LT(lhs.into(), rhs.into()),
-                Token::LessThanOrEqual => Expr::LEq(lhs.into(), rhs.into()),
-                Token::GreaterThan => Expr::GT(lhs.into(), rhs.into()),
-                Token::GreaterThanOrEqual => Expr::GEq(lhs.into(), rhs.into()),
+                Token::Equal => {
+                    let result = Expr::Eql(lhs.into(), rhs.into());
+                    info!("Equal -> {}", result);
+                    result
+                }
+                Token::NotEqual => {
+                    let result = Expr::NEq(lhs.into(), rhs.into());
+                    info!("NotEqual -> {}", result);
+                    result
+                }
+                Token::LessThan => {
+                    let result = Expr::LT(lhs.into(), rhs.into());
+                    info!("LessThan -> {}", result);
+                    result
+                }
+                Token::LessThanOrEqual => {
+                    let result = Expr::LEq(lhs.into(), rhs.into());
+                    info!("LessThanOrEqual -> {}", result);
+                    result
+                }
+                Token::GreaterThan => {
+                    let result = Expr::GT(lhs.into(), rhs.into());
+                    info!("GreaterThan -> {}", result);
+                    result
+                }
+                Token::GreaterThanOrEqual => {
+                    let result = Expr::GEq(lhs.into(), rhs.into());
+                    info!("GreaterThanOrEqual -> {}", result);
+                    result
+                }
                 _ => unreachable!("unexpected operator"),
             },
         );
@@ -503,17 +606,34 @@ where
             .or(comparisons)
             .or(indexed)
             .or(term)
+            .or(just(Token::Not).then(expr.clone()).map(|(_, expr)| {
+                let result = Expr::Not(expr.into());
+                info!("Not -> {}", result);
+                result
+            }))
     });
 
     let statement = expr
         .clone()
         .or(select! {
-            Token::Break => Keywords::Break,
-            Token::Continue => Keywords::Continue,
+            Token::Break => {
+                let result = Keywords::Break;
+                info!("break -> {}", result);
+                result
+            },
+            Token::Continue => {
+                let result = Keywords::Continue;
+                info!("continue -> {}", result);
+                result
+            },
         }
-        .map(Expr::Keyword))
+        .map(|k| {
+            let result = Expr::Keyword(k);
+            info!("Keyword -> {}", result);
+            result
+        }))
         // Multiple terminators allowed
-        .then_ignore(just(Token::Terminator).repeated())
+        .then_ignore(just(Token::Terminator).repeated().at_least(1))
         .map(|e| Stmt::Expr(e.into()));
 
     let block = recursive(|blk| {
@@ -523,7 +643,11 @@ where
             .repeated()
             .collect::<LinkedList<_>>()
             .delimited_by(just(Token::LBrace), just(Token::RBrace))
-            .map(Stmt::Block);
+            .map(|stmts| {
+                let result = Stmt::Block(stmts);
+                info!("Block -> {}", result);
+                result
+            });
 
         let block_or_stmt = block.clone().or(statement.clone());
 
@@ -532,8 +656,16 @@ where
             .then(expr.clone())
             .then(block_or_stmt.clone())
             .map(|((t, e), s)| match t {
-                Token::If => Stmt::If(e, s.into()),
-                Token::While => Stmt::While(e, s.into()),
+                Token::If => {
+                    let result = Stmt::If(e.clone(), s.into());
+                    info!("If {} -> {}", e, result);
+                    result
+                }
+                Token::While => {
+                    let result = Stmt::While(e.clone(), s.into());
+                    info!("While {} -> {}", e, result);
+                    result
+                }
                 _ => unreachable!("unexpected keyword"),
             });
 
@@ -542,7 +674,11 @@ where
             .then_ignore(just(Token::While))
             .then(expr.clone())
             .then_ignore(just(Token::Terminator))
-            .map(|(b, s)| Stmt::DoWhile(s, b.into()));
+            .map(|(b, s)| {
+                let result = Stmt::DoWhile(s.clone(), b.into());
+                info!("DoWhile {} -> {}", s, result);
+                result
+            });
 
         do_while.or(blk_stmt).or(block)
     });
@@ -566,30 +702,35 @@ pub fn parse(src: &str) {
     let token_stream =
         Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
 
-    match parser().parse(token_stream).into_result() {
-        Ok(ast) => {
-            println!("{}\n", &ast);
+    let (ast, errs) = parser().parse(token_stream).into_output_errors();
 
-            let chained_symbol_table: Arc<Mutex<ChainedSymbolTable<Assignment>>> = ast.into();
-            let chained_symbol_table = chained_symbol_table.lock().unwrap();
-            println!("Parsing completed successfully.\n");
-            println!("Symbol Table:");
-            println!("----");
+    if let Some(ast) = ast {
+        println!("\nParsing completed successfully.\n");
 
-            let mut seen = std::collections::HashSet::new();
-            for name in chained_symbol_table.symbols().iter().flatten().rev() {
-                if seen.insert(name.clone()) {
-                    // returns true if just inserted
-                    println!("ID: {}", name);
-                }
-            }
+        println!("Lex tokens:");
+        println!("{}\n", &ast);
 
-            println!("----");
-        }
-        Err(errs) => {
-            for e in errs {
-                eprintln!("Error: {}", e);
-            }
-        }
+        println!("Full parse AST:");
+        println!("{:#?}\n", &ast);
+
+        let chained_symbol_table: Arc<Mutex<ChainedSymbolTable<Assignment>>> = ast.into();
+        let chained_symbol_table = chained_symbol_table.lock().unwrap();
+
+        println!("Symbol Table:");
+        println!("{:#?}\n", chained_symbol_table);
+    } else {
+        errs.into_iter().for_each(|e| {
+            Report::build(ReportKind::Error, ((), e.span().into_range()))
+                .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+                .with_message(e.to_string())
+                .with_label(
+                    Label::new(((), e.span().into_range()))
+                        .with_message(e.reason().to_string())
+                        .with_color(Color::Red),
+                )
+                .finish()
+                .print(Source::from(&src))
+                .unwrap()
+        });
     }
 }

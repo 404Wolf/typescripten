@@ -19,10 +19,11 @@
       system:
       let
         pkgs = import inputs.nixpkgs { inherit system; };
-        pkgs_static = (import inputs.nixpkgs {
-          inherit system;
-          static = true;
-        }).pkgsMusl;
+        pkgs_static =
+          (import inputs.nixpkgs {
+            inherit system;
+            static = true;
+          }).pkgsMusl;
       in
       {
         devShells = rec {
@@ -44,7 +45,7 @@
               ]
             );
             RUSTFLAGS = "-L ${pkgs.libffi}/lib -l ffi";
-            LLVM_SYS_150_PREFIX="${pkgs.llvm.dev}";
+            LLVM_SYS_150_PREFIX = "${pkgs.llvm.dev}";
           };
           default = llvm-rs;
         };
@@ -69,7 +70,10 @@
             static = pkgs_static.callPackage ./nix/build.nix { static = true; };
           };
           docker = (pkgs.callPackage ./nix/docker.nix { app = build; }) // {
-            static = pkgs.callPackage ./nix/docker.nix { app = build.static; static = true; };
+            static = pkgs.callPackage ./nix/docker.nix {
+              app = build.static;
+              static = true;
+            };
           };
           default = build;
         };

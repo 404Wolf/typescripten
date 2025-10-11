@@ -1,13 +1,14 @@
 // #![feature(error_iter)]
 
-use crate::parse::parse;
+pub(crate) use crate::parse::parse;
 
 pub mod collections;
 mod parse;
 
 use clap::Parser;
+use env_logger::{Builder, Env};
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -17,6 +18,10 @@ struct Args {
 }
 
 fn main() {
+    Builder::from_env(Env::default().default_filter_or("info"))
+        .format(|buf, record| writeln!(buf, "{}", record.args()))
+        .init();
+
     let args = Args::parse();
 
     // Read from file, or stdin if input is "-"
