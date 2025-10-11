@@ -3,7 +3,7 @@
 The objective of the second assignment is to develop a **lexical analyzer**.
 In future assignments, you will reuse the functions developed here.
 
-______________________________________________________________________
+---
 
 ### Questions
 
@@ -16,7 +16,7 @@ Solve the following exercises in the textbook:
 - 3.6.2 (c)
 - 3.7.3 (a)
 
-______________________________________________________________________
+---
 
 ### Refactoring
 
@@ -25,14 +25,14 @@ If your symbol table did not receive any comment, you can skip this section.
 
 Hand in the revised code and any supporting material to demonstrate your code refactoring (for example, test cases and their output).
 
-______________________________________________________________________
+---
 
 ### Toolkit
 
 In this assignment, the instructions assume the use of **lex** for consistency with the book.\
 You are encouraged to transition to **flex** and **bison** (http://www.gnu.org/software/bison/) or a compiler generator with bindings for your target programming language.
 
-______________________________________________________________________
+---
 
 ### Lexical Analyzer
 
@@ -56,7 +56,6 @@ Hand in the regular expressions for these tokens. You are required to submit **o
 Write a lexical analyzer with **lex (or flex-bison)** for the language in Appendix A.1. The lexical analyzer should:
 
 - **Symbol table:** All `id`s should be installed in the chained symbol table implemented in Assignment 1.
-
   - The key is a string representing the identifier, copied from `yytext`.
   - The parser does not yet distinguish scopes, so all identifiers can be inserted into the top-level symbol table.
 
