@@ -14,10 +14,23 @@ This approach allows us to have partial ASTs that are still useful for the devel
 
 We additionally utilized the ariadne library [https://github.com/zesterer/ariadne](https://github.com/zesterer/ariadne) in order to pretty-print our errors and more clearly point out where the AST failed to parse.
 
-## Refactoring
+# Refactoring Statements
 
-The two links below contain the outputs from the textbook example code for parsing, displaying the difference in output before and after our output refactoring.
+You can find proof that our previous compiler works by looking at this sample output:
+[https://gist.github.com/404Wolf/1634b37d35e81df15c553f132b1a32dd](https://gist.github.com/404Wolf/1634b37d35e81df15c553f132b1a32dd)
+Which was run for `{ 12 + 12; boolean foo; foo = true; !foo; }`
 
-Before: [https://gist.github.com/404Wolf/6757d0716cd374d72e65f4735e339604](https://gist.github.com/404Wolf/6757d0716cd374d72e65f4735e339604)
+We added support for unary NOT "!" and fixed the issue with the final ";' not printing for blocks.
 
-After: [https://gist.github.com/404Wolf/1634b37d35e81df15c553f132b1a32dd](https://gist.github.com/404Wolf/1634b37d35e81df15c553f132b1a32dd)
+# Textbook Output
+
+Our textbook output can be found here:
+[https://gist.github.com/404Wolf/6757d0716cd374d72e65f4735e339604](https://gist.github.com/404Wolf/6757d0716cd374d72e65f4735e339604)
+
+# Building and running
+
+We suggest that if you use the Nix build system to build our project, you simply run
+
+`nix build –extra-experimental-features flakes --extra-experimental-features nix-command`
+
+Rather than using the development shell
