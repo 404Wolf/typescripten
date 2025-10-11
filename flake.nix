@@ -1,5 +1,5 @@
 {
-  description = "CSDS 377 Compiler";
+  description = "Typescripten";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -24,6 +24,19 @@
             inherit system;
             static = true;
           }).pkgsMusl;
+
+        treefmtconfig = inputs.treefmt-nix.lib.evalModule pkgs {
+          projectRootFile = "flake.nix";
+          programs = {
+            nixfmt.enable = true;
+            toml-sort.enable = true;
+            yamlfmt.enable = true;
+            shellcheck.enable = true;
+            shfmt.enable = true;
+            prettier.enable = true;
+          };
+          settings.formatter.shellcheck.excludes = [ ".envrc" ];
+        };
       in
       {
         devShells = rec {
@@ -49,22 +62,10 @@
           };
           default = llvm-rs;
         };
-        formatter =
-          let
-            treefmtconfig = inputs.treefmt-nix.lib.evalModule pkgs {
-              projectRootFile = "flake.nix";
-              programs = {
-                nixfmt.enable = true;
-                toml-sort.enable = true;
-                yamlfmt.enable = true;
-                mdformat.enable = true;
-                shellcheck.enable = true;
-                shfmt.enable = true;
-              };
-              settings.formatter.shellcheck.excludes = [ ".envrc" ];
-            };
-          in
-          treefmtconfig.config.build.wrapper;
+        formatter = treefmtconfig.config.build.wrapper;
+        checks = {
+          formatter = treefmtconfig.config.build.check self;
+        };
         packages = rec {
           build = (pkgs.callPackage ./nix/build.nix { }) // {
             static = pkgs_static.callPackage ./nix/build.nix { static = true; };
