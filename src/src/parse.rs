@@ -148,8 +148,8 @@ enum Expr {
 enum Stmt {
     Expr(Box<Expr>),
     Block(LinkedList<Stmt>),
-    If(Expr, Box<Stmt>),
-    While(Expr, Box<Stmt>),
+    If(Expr, Box<Stmt>, Option<Box<Expr>>),
+    While(Expr, Box<Stmt>, Option<Box<Expr>>),
     DoWhile(Expr, Box<Stmt>),
 }
 
@@ -295,10 +295,12 @@ impl fmt::Display for Stmt {
                 }
                 write!(f, "; }}")
             }
-            Stmt::If(cond, body) => {
+            Stmt::If(cond, body, el) => {
+                // TODO! does not print else
                 write!(f, "if {} {}", cond, body.as_ref())
             }
-            Stmt::While(cond, body) => write!(f, "while {} {}", cond, body.as_ref()),
+            // TODO! does not print else
+            Stmt::While(cond, body, el) => write!(f, "while {} {}", cond, body.as_ref()),
             Stmt::DoWhile(cond, body) => write!(f, "do {} ; while {}", body.as_ref(), cond),
         }
     }
@@ -373,8 +375,9 @@ impl<'a> Into<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
                                 .into_par_iter()
                                 .for_each(|stmt| process_stmt(&stmt, &child_scope))
                         }
-                        Stmt::If(_, stmt) => process_stmt(stmt.as_ref(), symbol_table),
-                        Stmt::While(_, stmt) => process_stmt(stmt.as_ref(), symbol_table),
+                        // TODO! not parsing else statements
+                        Stmt::If(_, stmt, el) => process_stmt(stmt.as_ref(), symbol_table),
+                        Stmt::While(_, stmt, el) => process_stmt(stmt.as_ref(), symbol_table),
                         Stmt::DoWhile(_, stmt) => process_stmt(stmt.as_ref(), symbol_table),
                     }
                 }
@@ -655,18 +658,22 @@ where
             .or(just(Token::While))
             .then(expr.clone())
             .then(block_or_stmt.clone())
-            .map(|((t, e), s)| match t {
-                Token::If => {
-                    let result = Stmt::If(e.clone(), s.into());
-                    info!("If {} -> {}", e, result);
-                    result
+            .then(just(Token::Else).ignore_then(block).or_not())
+            .map(|(((t, e), s), el)| {
+                let else_stmt = estmt.clone().map(|stmt| stmt.into());
+                match t {
+                    Token::If => {
+                        let result = Stmt::If(e.clone(), s.into(), else_stmt);
+                        info!("If {} -> {} else {}", e, result, else_stmt);
+                        result
+                    }
+                    Token::While => {
+                        let result = Stmt::While(e.clone(), s.into(), else_stmt);
+                        info!("While {} -> {} else {}", e, result, else_stmt);
+                        result
+                    }
+                    _ => unreachable!("unexpected keyword"),
                 }
-                Token::While => {
-                    let result = Stmt::While(e.clone(), s.into());
-                    info!("While {} -> {}", e, result);
-                    result
-                }
-                _ => unreachable!("unexpected keyword"),
             });
 
         let do_while = just(Token::Do)

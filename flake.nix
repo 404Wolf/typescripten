@@ -38,7 +38,7 @@
           settings.formatter.shellcheck.excludes = [ ".envrc" ];
         };
       in
-      {
+      rec {
         devShells = rec {
           llvm-rs = pkgs.mkShell {
             shellHook = ''
@@ -55,9 +55,11 @@
                 llvm
                 llvm.dev
                 clang
-              ]
+                rustPlatform.rustLibSrc
+              ] ++ packages.build.nativeBuildInputs
             );
             RUSTFLAGS = "-L ${pkgs.libffi}/lib -l ffi";
+            RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
             LLVM_SYS_150_PREFIX = "${pkgs.llvm.dev}";
           };
           default = llvm-rs;
