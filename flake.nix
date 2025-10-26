@@ -56,6 +56,7 @@
                 llvm.dev
                 clang
                 rustPlatform.rustLibSrc
+                rust-analyzer
               ] ++ packages.build.nativeBuildInputs
             );
             RUSTFLAGS = "-L ${pkgs.libffi}/lib -l ffi";

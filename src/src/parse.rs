@@ -660,7 +660,7 @@ where
             .then(block_or_stmt.clone())
             .then(just(Token::Else).ignore_then(block).or_not())
             .map(|(((t, e), s), el)| {
-                let else_stmt = estmt.clone().map(|stmt| stmt.into());
+                let else_stmt = el.clone().map(|stmt| stmt.into());
                 match t {
                     Token::If => {
                         let result = Stmt::If(e.clone(), s.into(), else_stmt);
