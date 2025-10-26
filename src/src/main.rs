@@ -4,8 +4,8 @@ pub(crate) use crate::parse::parse;
 
 pub mod collections;
 mod parse;
-mod utils;
 mod types;
+mod codes;
 
 use clap::Parser;
 use env_logger::{Builder, Env};
