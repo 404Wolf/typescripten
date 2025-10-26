@@ -12,7 +12,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{collections::ChainedSymbolTable, types::Types};
+use crate::{collections::ChainedSymbolTable, types::Type};
 
 #[derive(Logos, Clone, Debug, PartialEq)]
 enum Token<'a> {
@@ -135,10 +135,71 @@ enum Expr {
     Index(Box<Expr>, Box<Expr>),
     ID(String),
     Const(Consts),
+    /// Variable assignment, with optional indexing for arrays
     Assign(String, Box<Expr>, Option<Vec<Expr>>),
-    Declare(Types, String),
+    Declare(Type, String),
     Group(Box<Expr>),
     Keyword(Keywords),
+}
+
+impl Expr {
+    /// Get the type of an expression, which is automatically widened as needed.
+    ///
+    /// The input chained_symbol_table must be passed at the correct scope that
+    /// the expr exists at.
+    fn get_type(
+        &self,
+        chained_symbol_table: &Arc<Mutex<ChainedSymbolTable<Assignment>>>,
+    ) -> Option<Type> {
+        match self {
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right) => {
+                let left_type = left.as_ref().get_type(chained_symbol_table)?;
+                let right_type = right.as_ref().get_type(chained_symbol_table)?;
+                left_type.widen(&right_type)
+            }
+            Expr::Eql(_, _)
+            | Expr::NEq(_, _)
+            | Expr::Not(_)
+            | Expr::LT(_, _)
+            | Expr::LEq(_, _)
+            | Expr::GT(_, _)
+            | Expr::GEq(_, _) => Some(Type::Boolean),
+            Expr::ID(name) => {
+                // Look up the identifier in the symbol table
+                chained_symbol_table
+                    .lock()
+                    .ok()
+                    .and_then(|table| table.get(name).map(|assignment| assignment.type_.clone()))
+            }
+            Expr::Const(c) => Some(match c {
+                Consts::Int(_) => Type::Int,
+                Consts::Float(_) => Type::Float,
+                Consts::Boolean(_) => Type::Boolean,
+            }),
+            Expr::Group(e) => e.as_ref().get_type(chained_symbol_table),
+            Expr::Declare(t, _) => Some(t.clone()),
+            Expr::Keyword(k) => Some(Type::Boolean),
+            Expr::Assign(name, _, _) => {
+                // Look up the identifier in the symbol table
+                chained_symbol_table
+                    .lock()
+                    .ok()
+                    .and_then(|table| table.get(name).map(|assignment| assignment.type_.clone()))
+            }
+            Expr::Index(expr, expr1) => {
+                // test[5 + 5] widens to (typeof test)
+                let base_type = expr.as_ref().get_type(chained_symbol_table)?;
+
+                match base_type {
+                    Type::Array(inner_type, _) => Some(*inner_type),
+                    _ => None,
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -157,8 +218,9 @@ enum StmtList {
 
 #[derive(Clone, Debug)]
 struct Assignment {
-    types: Types,
+    type_: Type,
     value: Option<Expr>,
+    is_temp: bool,
 }
 
 impl fmt::Display for Token<'_> {
@@ -213,13 +275,13 @@ impl fmt::Display for Token<'_> {
     }
 }
 
-impl fmt::Display for Types {
+impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Types::Int => write!(f, "basic"),
-            Types::Float => write!(f, "basic"),
-            Types::Boolean => write!(f, "basic"),
-            Types::Array(inner_type, size) => {
+            Type::Int => write!(f, "basic"),
+            Type::Float => write!(f, "basic"),
+            Type::Boolean => write!(f, "basic"),
+            Type::Array(inner_type, size) => {
                 if let Some(_) = size {
                     write!(f, "basic [ num ]")
                 } else {
@@ -324,7 +386,7 @@ impl fmt::Display for StmtList {
 
 impl fmt::Display for Assignment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", &self.types)?;
+        write!(f, "{}", &self.type_)?;
         if let Some(expr) = &self.value {
             write!(f, " = {}", expr)?;
         }
@@ -343,34 +405,65 @@ impl<'a> Into<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
                     symbol_table: &Arc<Mutex<ChainedSymbolTable<Assignment>>>,
                 ) {
                     match stmt {
-                        Stmt::Expr(expr) => match expr.as_ref() {
-                            Expr::Declare(types, id) => {
-                                if let Ok(mut table) = symbol_table.lock() {
-                                    table.insert(
-                                        id.clone(),
-                                        Assignment {
-                                            types: types.clone(),
-                                            value: None,
-                                        },
-                                    );
-                                }
-                            }
-                            Expr::Assign(id, value, _) => {
-                                // Ignore indexing for now
-                                if let Ok(mut table) = symbol_table.lock() {
-                                    if let Some(assignment) = table.get(id).clone() {
+                        Stmt::Expr(expr) => {
+                            match expr.as_ref() {
+                                Expr::Declare(types, id) => {
+                                    if let Ok(mut table) = symbol_table.lock() {
                                         table.insert(
                                             id.clone(),
                                             Assignment {
-                                                types: assignment.types,
-                                                value: Some(value.as_ref().clone()),
+                                                type_: types.clone(),
+                                                value: None,
+                                                is_temp: false,
                                             },
                                         );
                                     }
                                 }
+                                Expr::Assign(id, value, _) => {
+                                    // Ignore indexing for now
+                                    if let Ok(mut table) = symbol_table.lock() {
+                                        if let Some(assignment) = table.get(id).clone() {
+                                            let type_of_expr = value
+                                            .as_ref()
+                                            .get_type(symbol_table)
+                                            // TODO: Return result instead of panicking
+                                            .expect("Could not get type of expression in assignment.");
+
+                                            // Auto widen the type of the key-val
+                                            // relation to be the widest of
+                                            // expression
+                                            // First we rerus
+                                            let widened_type = assignment
+                                                .type_
+                                                .widen(&type_of_expr)
+                                                // TODO: Return result instead of panicking
+                                                .expect("Could not widen types in assignment.");
+
+                                            // Make sure that widened_type is the
+                                            // same as the assignment type (you
+                                            // can't assign to something that is
+                                            // smaller)
+                                            if type_of_expr != widened_type {
+                                                // TODO: Return result instead of panicking
+                                                panic!(
+                                                    "Type of expression in assignment cannot be widened to the variable's type."
+                                                );
+                                            }
+
+                                            table.insert(
+                                                id.clone(),
+                                                Assignment {
+                                                    type_: widened_type,
+                                                    value: Some(*(*value).clone()),
+                                                    is_temp: false,
+                                                },
+                                            );
+                                        }
+                                    }
+                                }
+                                _ => (),
                             }
-                            _ => (),
-                        },
+                        }
                         Stmt::Block(block_stmts) => {
                             let child_scope = ChainedSymbolTable::add_child(symbol_table);
 
@@ -437,17 +530,17 @@ where
 
     let declaration = select! {
         Token::IntType => {
-         let result = Types::Int;
+         let result = Type::Int;
             info!("int -> {}", result);
             result
         },
         Token::FloatType => {
-            let result = Types::Float;
+            let result = Type::Float;
             info!("float -> {}", result);
             result
         },
         Token::BooleanType => {
-            let result = Types::Boolean;
+            let result = Type::Boolean;
             info!("boolean -> {}", result);
             result
         }
@@ -458,8 +551,8 @@ where
         Some(quantities) => {
             let result = Expr::Declare(
                 quantities.iter().fold(types, |acc, size| match size {
-                    Some(Some(size)) => Types::Array(acc.into(), Some(*size)),
-                    _ => Types::Array(acc.into(), None),
+                    Some(Some(size)) => Type::Array(acc.into(), Some(*size)),
+                    _ => Type::Array(acc.into(), None),
                 }),
                 name,
             );
