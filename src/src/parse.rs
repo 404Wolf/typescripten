@@ -661,23 +661,20 @@ where
             .then(just(Token::Else).ignore_then(block).or_not())
             .map(|(((t, e), s), el)| {
                 let else_stmt: Option<Box<Stmt>> = el.clone().map(|stmt| stmt.into());
-                let else_str = match else_stmt {
-                    Some(b) => {
+                let else_str = match else_stmt.clone() {
+                    Some(b) => format!(" else {}", b.as_ref()),
+                    None => String::new(),
+                };
 
-                    }
-                    None => {
-
-                    }
-                }
                 match t {
                     Token::If => {
                         let result = Stmt::If(e.clone(), s.into(), else_stmt);
-                        info!("If {} -> {} else {}", e, result, else_stmt.map(|s| s));
+                        info!("If {} -> {} else {}", e, result, else_str);
                         result
                     }
                     Token::While => {
                         let result = Stmt::While(e.clone(), s.into(), else_stmt);
-                        info!("While {} -> {} else {}", e, result, else_stmt.unwrap_or(""));
+                        info!("While {} -> {} else {}", e, result, else_str);
                         result
                     }
                     _ => unreachable!("unexpected keyword"),
