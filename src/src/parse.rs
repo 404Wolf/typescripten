@@ -148,8 +148,8 @@ enum Expr {
 enum Stmt {
     Expr(Box<Expr>),
     Block(LinkedList<Stmt>),
-    If(Expr, Box<Stmt>, Option<Box<Expr>>),
-    While(Expr, Box<Stmt>, Option<Box<Expr>>),
+    If(Expr, Box<Stmt>, Option<Box<Stmt>>),
+    While(Expr, Box<Stmt>, Option<Box<Stmt>>),
     DoWhile(Expr, Box<Stmt>),
 }
 
@@ -660,16 +660,24 @@ where
             .then(block_or_stmt.clone())
             .then(just(Token::Else).ignore_then(block).or_not())
             .map(|(((t, e), s), el)| {
-                let else_stmt = el.clone().map(|stmt| stmt.into());
+                let else_stmt: Option<Box<Stmt>> = el.clone().map(|stmt| stmt.into());
+                let else_str = match else_stmt {
+                    Some(b) => {
+
+                    }
+                    None => {
+
+                    }
+                }
                 match t {
                     Token::If => {
                         let result = Stmt::If(e.clone(), s.into(), else_stmt);
-                        info!("If {} -> {} else {}", e, result, else_stmt);
+                        info!("If {} -> {} else {}", e, result, else_stmt.map(|s| s));
                         result
                     }
                     Token::While => {
                         let result = Stmt::While(e.clone(), s.into(), else_stmt);
-                        info!("While {} -> {} else {}", e, result, else_stmt);
+                        info!("While {} -> {} else {}", e, result, else_stmt.unwrap_or(""));
                         result
                     }
                     _ => unreachable!("unexpected keyword"),
