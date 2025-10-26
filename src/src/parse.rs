@@ -12,7 +12,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::collections::ChainedSymbolTable;
+use crate::{collections::ChainedSymbolTable, types::Types};
 
 #[derive(Logos, Clone, Debug, PartialEq)]
 enum Token<'a> {
@@ -104,14 +104,6 @@ enum Token<'a> {
 
     #[regex(r"[ \t\f\n]+", logos::skip)]
     Whitespace,
-}
-
-#[derive(Clone, Debug)]
-enum Types {
-    Int,
-    Float,
-    Boolean,
-    Array(Box<Types>, Option<isize>),
 }
 
 #[derive(Clone, Debug)]
@@ -297,7 +289,11 @@ impl fmt::Display for Stmt {
             }
             Stmt::If(cond, body, el) => {
                 // TODO! does not print else
-                write!(f, "if {} {}", cond, body.as_ref())
+                let else_str = match el {
+                    Some(b) => format!(" else {}", b.as_ref()),
+                    None => String::new(),
+                };
+                write!(f, "if {} {}{}", cond, body.as_ref(), else_str)
             }
             // TODO! does not print else
             Stmt::While(cond, body, el) => write!(f, "while {} {}", cond, body.as_ref()),
