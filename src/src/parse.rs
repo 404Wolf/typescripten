@@ -770,6 +770,7 @@ mod tests {
         (ast, chained_symbol_table)
     }
 
+    #[test]
     fn test_if_else_statement() {
         let src = "
             int x;
