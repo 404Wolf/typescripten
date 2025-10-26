@@ -658,7 +658,7 @@ where
             .or(just(Token::While))
             .then(expr.clone())
             .then(block_or_stmt.clone())
-            .then(just(Token::Else).ignore_then(block).or_not())
+            .then(just(Token::Else).ignore_then(block.clone()).or_not())
             .map(|(((t, e), s), el)| {
                 let else_stmt: Option<Box<Stmt>> = el.clone().map(|stmt| stmt.into());
                 let else_str = match else_stmt.clone() {
@@ -744,5 +744,54 @@ pub fn parse(src: &str) {
                 .print(Source::from(&src))
                 .unwrap()
         });
+    }
+}
+
+mod tests {
+    use super::*;
+
+    fn get_ast_and_chained_symbol_table(
+        src: &str,
+    ) -> (Option<StmtList>, Arc<Mutex<ChainedSymbolTable<Assignment>>>) {
+        let token_iter = Token::lexer(src).spanned().map(|(tok, span)| {
+            let span = Into::<SimpleSpan<usize>>::into(span);
+            match tok {
+                Ok(tok) => (tok, span),
+                Err(()) => (Token::Error, span),
+            }
+        });
+
+        let token_stream =
+            Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
+
+        let (ast, _) = parser().parse(token_stream).into_output_errors();
+
+        let chained_symbol_table: Arc<Mutex<ChainedSymbolTable<Assignment>>> = ast
+            .clone()
+            .expect("AST should be generated successfully.")
+            .into();
+
+        (ast, chained_symbol_table)
+    }
+
+    fn test_if_else_statement() {
+        let src = "
+            int x;
+            if (x > 0) {
+                x = x - 1;
+            } else {
+                x = x + 1;
+            }
+        ";
+
+        let (ast, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+
+        assert!(ast.is_some(), "AST should be generated successfully.");
+
+        let chained_symbol_table = chained_symbol_table.lock().unwrap();
+        assert!(
+            chained_symbol_table.get("x").is_some(),
+            "Variable 'x' should be in the symbol table."
+        );
     }
 }
