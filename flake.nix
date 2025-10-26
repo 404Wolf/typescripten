@@ -57,7 +57,8 @@
                 clang
                 rustPlatform.rustLibSrc
                 rust-analyzer
-              ] ++ packages.build.nativeBuildInputs
+              ]
+              ++ packages.build.nativeBuildInputs
             );
             RUSTFLAGS = "-L ${pkgs.libffi}/lib -l ffi";
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";

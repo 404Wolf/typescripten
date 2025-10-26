@@ -113,6 +113,13 @@ enum Keywords {
 }
 
 #[derive(Clone, Debug)]
+pub enum Consts {
+    Int(f64),
+    Float(f64),
+    Boolean(bool),
+}
+
+#[derive(Clone, Debug)]
 enum Expr {
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
@@ -126,10 +133,8 @@ enum Expr {
     GT(Box<Expr>, Box<Expr>),
     GEq(Box<Expr>, Box<Expr>),
     Index(Box<Expr>, Box<Expr>),
-    Int(f64),
-    Float(f64),
-    Boolean(bool),
     ID(String),
+    Const(Consts),
     Assign(String, Box<Expr>, Option<Vec<Expr>>),
     Declare(Types, String),
     Group(Box<Expr>),
@@ -249,9 +254,11 @@ impl fmt::Display for Expr {
             Expr::GT(lhs, rhs) => write!(f, "{} > {}", lhs.as_ref(), rhs.as_ref()),
             Expr::GEq(lhs, rhs) => write!(f, "{} >= {}", lhs.as_ref(), rhs.as_ref()),
             Expr::Index(expr, index) => write!(f, "{} [ {} ]", expr.as_ref(), index.as_ref()),
-            Expr::Int(n) => write!(f, "(int: {})", n),
-            Expr::Float(n) => write!(f, "(float: {})", n),
-            Expr::Boolean(b) => write!(f, "(bool: {})", b),
+            Expr::Const(c) => match c {
+                Consts::Int(n) => write!(f, "{}", n),
+                Consts::Float(n) => write!(f, "{}", n),
+                Consts::Boolean(b) => write!(f, "{}", b),
+            },
             Expr::ID(id) => write!(f, "(id: {})", id),
             Expr::Assign(id, value, indices) => {
                 if let Some(indices) = indices {
@@ -395,17 +402,17 @@ where
 {
     let atom = select! {
         Token::Int(n) => {
-            let result = Expr::Int(n.parse().unwrap());
+            let result = Expr::Const(Consts::Int(n.parse().unwrap()));
             info!("{} -> {}", n, result);
             result
         },
         Token::Float(f) => {
-            let result = Expr::Float(f.parse().unwrap());
+            let result = Expr::Const(Consts::Float(f.parse().unwrap()));
             info!("{} -> {}", f, result);
             result
         },
         Token::Boolean(b) => {
-            let result = Expr::Boolean(b.parse().unwrap());
+            let result = Expr::Const(Consts::Boolean(b.parse().unwrap()));
             info!("{} -> {}", b, result);
             result
         },
@@ -779,6 +786,93 @@ mod tests {
             } else {
                 x = x + 1;
             }
+        ";
+
+        let (ast, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+
+        assert!(ast.is_some(), "AST should be generated successfully.");
+
+        let chained_symbol_table = chained_symbol_table.lock().unwrap();
+        assert!(
+            chained_symbol_table.get("x").is_some(),
+            "Variable 'x' should be in the symbol table."
+        );
+    }
+
+    #[test]
+    fn test_while_statement() {
+        let src = "
+            int count;
+            count = 10;
+            while (count > 0) {
+                count = count - 1;
+            }
+        ";
+
+        let (ast, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+
+        assert!(ast.is_some(), "AST should be generated successfully.");
+
+        let chained_symbol_table = chained_symbol_table.lock().unwrap();
+        assert!(
+            chained_symbol_table.get("count").is_some(),
+            "Variable 'count' should be in the symbol table."
+        );
+    }
+
+    #[test]
+    fn test_do_while_statement() {
+        let src = "
+            int num;
+            num = 5;
+            do {
+                num = num - 1;
+            } while (num > 0);
+        ";
+
+        let (ast, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+
+        assert!(ast.is_some(), "AST should be generated successfully.");
+
+        let chained_symbol_table = chained_symbol_table.lock().unwrap();
+        assert!(
+            chained_symbol_table.get("num").is_some(),
+            "Variable 'num' should be in the symbol table."
+        );
+    }
+
+    #[test]
+    fn test_variable_declaration() {
+        let src = "
+            int x;
+            float[] y;
+            int[12][2] z;
+        ";
+
+        let (ast, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+
+        assert!(ast.is_some(), "AST should be generated successfully.");
+
+        let chained_symbol_table = chained_symbol_table.lock().unwrap();
+        assert!(
+            chained_symbol_table.get("x").is_some(),
+            "Variable 'x' should be in the symbol table."
+        );
+        assert!(
+            chained_symbol_table.get("y").is_some(),
+            "Variable 'y' should be in the symbol table."
+        );
+        assert!(
+            chained_symbol_table.get("z").is_some(),
+            "Variable 'z' should be in the symbol table."
+        );
+    }
+
+    #[test]
+    fn test_variable_assignment() {
+        let src = "
+            int[] x;
+            x[1] = x + 5;
         ";
 
         let (ast, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
