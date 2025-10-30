@@ -13,7 +13,7 @@ impl Type {
     /// Returns the widened type if possible, or None if they cannot be widened.
     pub fn widen(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (Type::Int, Type::Float) | (Type::Float, Type::Int) => Some(Type::Float),
+            (Type::Int, Type::Float) => Some(Type::Float),
             (Type::Int, Type::Int) => Some(Type::Int),
             (Type::Float, Type::Float) => Some(Type::Float),
             (Type::Boolean, Type::Boolean) => Some(Type::Boolean),
@@ -139,7 +139,7 @@ pub enum Keywords {
 
 #[derive(Clone, Debug)]
 pub enum Consts {
-    Int(isize),
+    Int(f32), // the error handling for narrowing is elsewhere
     Float(f32),
     Boolean(bool),
 }

@@ -58,40 +58,50 @@ impl TryFrom<StmtList> for ChainedSymbolTable<Assignment> {
                                 Expr::Assign(id, value, indexes) => {
                                     // assigning value into id `id[...indexes] = <value>`
                                     // Ignore indexing for now
-                                    let type_of_expr = value
+                                    let rhs_wider = value
                                         .as_ref()
                                         .get_type(chained_symbol_table)
                                         .ok_or(ParseError::ReferenceError)?;
 
                                     // Table is the active scope
-                                    if let Some(assignment) = chained_symbol_table.get(id) {
-                                        // Get the value of id at the current scope
+                                    match chained_symbol_table.get(id) {
+                                        Some(lhs_narrower) => {
+                                            // Get the value of id at the current scope
 
-                                        // Auto widen the type of the key-val
-                                        // relation to be the widest of
-                                        // expression
-                                        let widened_type = assignment
-                                            .get_type_at_indexes(match indexes {
-                                                Some(idx) => idx.len(),
-                                                _ => 0,
-                                            })
-                                            .ok_or(ParseError::ReferenceError)?
-                                            .widen(&type_of_expr)
-                                            .ok_or(ParseError::TypeError(
-                                                TypeError::AssignmentTypeMismatch,
-                                            ))?;
+                                            let lhs_type = &lhs_narrower
+                                                .get_type_at_indexes(match indexes {
+                                                    Some(idx) => idx.len(),
+                                                    _ => 0,
+                                                })
+                                                .ok_or(ParseError::TypeError(
+                                                    TypeError::AssignmentTypeMismatch,
+                                                ))?;
 
-                                        // Make sure that widened_type is the
-                                        // same as the assignment type (you
-                                        // can't assign to something that is
-                                        // smaller)
-                                        if type_of_expr != widened_type {
-                                            return Err(ParseError::TypeError(
-                                                TypeError::AssignmentTypeMismatch,
-                                            ));
+                                            // Auto widen the type of the key-val
+                                            // relation to be the widest of
+                                            // expression
+                                            let widened_type = rhs_wider.widen(lhs_type).ok_or(
+                                                ParseError::TypeError(
+                                                    TypeError::AssignmentTypeMismatch,
+                                                ),
+                                            )?;
+
+                                            // Make sure that widened_type is the
+                                            // same as the assignment type (you
+                                            // can't assign to something that is
+                                            // smaller)
+                                            if *lhs_type != widened_type {
+                                                return Err(ParseError::TypeError(
+                                                    TypeError::AssignmentTypeMismatch,
+                                                ));
+                                            } else {
+                                                Ok(())
+                                            }
+                                        }
+                                        None => {
+                                            return Err(ParseError::ReferenceError);
                                         }
                                     }
-                                    Ok(())
                                 }
                                 _ => Ok(()),
                             }
@@ -120,6 +130,7 @@ impl TryFrom<StmtList> for ChainedSymbolTable<Assignment> {
                 }
 
                 for stmt in &stmts {
+                    println!("{:?}", stmt);
                     process_stmt(stmt, &mut symbol_table)?;
                 }
             }

@@ -157,6 +157,90 @@ mod tests {
     }
 
     #[test]
+    fn test_variable_assignment_type_mismatch() {
+        let src = "
+            int x;
+            x = 3.14;
+        ";
+
+        let (ast, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+        println!("{:?}", chained_symbol_table);
+
+        assert!(ast.is_some(), "AST should be generated successfully.");
+        println!("{:?}", ast.unwrap());
+
+        match chained_symbol_table {
+            Err(ParseError::TypeError(_)) => {
+                // Expected type error due to assignment type mismatch
+            }
+            _ => panic!("Expected a TypeError due to assignment type mismatch."),
+        }
+    }
+
+    #[test]
+    fn test_variable_assignment_reference_error() {
+        let src = "
+            int x;
+            y = 10;
+        ";
+
+        let (ast, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+
+        assert!(ast.is_some(), "AST should be generated successfully.");
+        println!("{:?}", ast.unwrap());
+        println!("{:?}", chained_symbol_table);
+
+        match chained_symbol_table {
+            Err(ParseError::ReferenceError) => {
+                // Expected reference error due to undeclared variable
+            }
+            _ => panic!("Expected a ReferenceError due to undeclared variable."),
+        }
+    }
+
+    #[test]
+    fn test_variable_assignment_widening() {
+        let src = "
+            float x;
+            x = 10;
+        ";
+
+        let (ast, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+        println!("{:?}", chained_symbol_table);
+        println!("{:?}", ast);
+
+        assert!(ast.is_some(), "AST should be generated successfully.");
+
+        assert!(
+            chained_symbol_table
+                .expect("Chained symbol table should be generated successfully.")
+                .get("x")
+                .is_some(),
+            "Variable 'x' should be in the symbol table."
+        );
+    }
+
+    #[test]
+    fn test_variable_assignment_widening_into_arr_index() {
+        let src = "
+            float[5] arr;
+            arr[2] = 3;
+        ";
+
+        let (ast, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+
+        assert!(ast.is_some(), "AST should be generated successfully.");
+
+        assert!(
+            chained_symbol_table
+                .expect("Chained symbol table should be generated successfully.")
+                .get("arr")
+                .is_some(),
+            "Variable 'arr' should be in the symbol table."
+        );
+    }
+
+    #[test]
     fn test_get_expr_type() {
         let src = "
             int a;
@@ -174,7 +258,7 @@ mod tests {
         let assignment_type = codegen::expr_type::HasType::get_type(
             &Expr::Assign(
                 "a".to_string(),
-                Box::new(Expr::Const(Consts::Int(12))),
+                Box::new(Expr::Const(Consts::Int(12.0))),
                 None,
             ),
             &chained_symbol_table,
@@ -205,7 +289,7 @@ mod tests {
 
         let index_expr = Expr::Index(
             Box::new(Expr::ID("arr".to_string())),
-            Box::new(Expr::Const(Consts::Int(3))),
+            Box::new(Expr::Const(Consts::Int(3.0))),
         );
 
         let index_type = codegen::expr_type::HasType::get_type(&index_expr, &chained_symbol_table)
