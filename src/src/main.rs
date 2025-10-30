@@ -4,7 +4,7 @@ use chumsky::span::SimpleSpan;
 use chumsky::prelude::*;
 use chumsky::Parser as ChParser;
 use clap::Parser;
-use codegen::into_table::Assignment;
+use codegen::ast_to_table::Assignment;
 use codegen::table::ChainedSymbolTable;
 use env_logger::{Builder, Env};
 use logos::Logos;

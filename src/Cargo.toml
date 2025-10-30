@@ -12,13 +12,13 @@ ariadne = "0.6.0"
 version = "1.18.1"
 features = ["v4"]
 
+[lib]
+path = "src/lib.rs"
+
 [package]
 name = "compiler"
 version = "0.1.0"
 edition = "2024"
-
-[lib]
-path = "src/lib.rs"
 
 [workspace]
 members = [".", "src/parse", "src/codegen", "src/compile"]

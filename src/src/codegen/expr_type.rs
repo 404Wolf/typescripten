@@ -1,9 +1,25 @@
 use parse::symbols::{Consts, Expr, Type};
 
-use crate::{into_table::Assignment, table::ChainedSymbolTable};
+use crate::{ast_to_table::Assignment, table::ChainedSymbolTable};
 
 pub trait HasType {
     fn get_type(&self, chained_symbol_table: &ChainedSymbolTable<Assignment>) -> Option<Type>;
+}
+
+pub trait GetTypeAtIndexes {
+    fn get_type_at_indexes(&self, num_indexes: usize) -> Option<Type>;
+}
+
+impl GetTypeAtIndexes for Type {
+    fn get_type_at_indexes(&self, num_indexes: usize) -> Option<Type> {
+        match (self, num_indexes) {
+            (_, 0) => Some(self.clone()),
+            (Type::Array(inner_type, _), num_indexes) => {
+                inner_type.as_ref().get_type_at_indexes(num_indexes - 1)
+            }
+            _ => None,
+        }
+    }
 }
 
 impl HasType for Expr {

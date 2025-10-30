@@ -1,19 +1,23 @@
 mod tests {
-    use std::sync::{Arc, Mutex};
-
     use chumsky::{
         Parser,
         input::{Input, Stream},
         span::SimpleSpan,
     };
-    use codegen::{expr_type::HasType, into_table::Assignment, table::ChainedSymbolTable};
+    use codegen::{
+        ast_to_table::{Assignment, ParseError},
+        table::ChainedSymbolTable,
+    };
     use logos::Logos;
     use parse::{parse::parser, symbols::*};
 
     #[allow(dead_code)]
     fn get_ast_and_chained_symbol_table(
         src: &str,
-    ) -> (Option<StmtList>, ChainedSymbolTable<Assignment>) {
+    ) -> (
+        Option<StmtList>,
+        Result<ChainedSymbolTable<Assignment>, ParseError>,
+    ) {
         let token_iter = Token::lexer(src).spanned().map(|(tok, span)| {
             let span = Into::<SimpleSpan<usize>>::into(span);
             (tok.unwrap(), span)
@@ -24,11 +28,10 @@ mod tests {
 
         let (ast, _) = parser().parse(token_stream).into_output_errors();
 
-        let chained_symbol_table: ChainedSymbolTable<Assignment> = ast
+        let chained_symbol_table = ast
             .clone()
             .expect("AST should be generated successfully.")
-            .try_into()
-            .unwrap();
+            .try_into();
 
         (ast, chained_symbol_table)
     }
@@ -49,7 +52,10 @@ mod tests {
         assert!(ast.is_some(), "AST should be generated successfully.");
 
         assert!(
-            chained_symbol_table.get("x").is_some(),
+            chained_symbol_table
+                .expect("Chained symbol table should be generated successfully.")
+                .get("x")
+                .is_some(),
             "Variable 'x' should be in the symbol table."
         );
     }
@@ -69,7 +75,10 @@ mod tests {
         assert!(ast.is_some(), "AST should be generated successfully.");
 
         assert!(
-            chained_symbol_table.get("count").is_some(),
+            chained_symbol_table
+                .expect("Chained symbol table should be generated successfully.")
+                .get("count")
+                .is_some(),
             "Variable 'count' should be in the symbol table."
         );
     }
@@ -89,7 +98,10 @@ mod tests {
         assert!(ast.is_some(), "AST should be generated successfully.");
 
         assert!(
-            chained_symbol_table.get("num").is_some(),
+            chained_symbol_table
+                .expect("Chained symbol table should be generated successfully.")
+                .get("num")
+                .is_some(),
             "Variable 'num' should be in the symbol table."
         );
     }
@@ -103,6 +115,8 @@ mod tests {
         ";
 
         let (ast, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+        let chained_symbol_table =
+            chained_symbol_table.expect("Chained symbol table should be generated successfully.");
 
         assert!(ast.is_some(), "AST should be generated successfully.");
 
@@ -124,7 +138,8 @@ mod tests {
     fn test_variable_assignment() {
         let src = "
             int[5] x;
-            int y = 12;
+            int y;
+            y = 12;
             x[1] = y + 5;
         ";
 
@@ -133,7 +148,10 @@ mod tests {
         assert!(ast.is_some(), "AST should be generated successfully.");
 
         assert!(
-            chained_symbol_table.get("x").is_some(),
+            chained_symbol_table
+                .expect("Chained symbol table should be generated successfully.")
+                .get("x")
+                .is_some(),
             "Variable 'x' should be in the symbol table."
         );
     }
@@ -147,16 +165,20 @@ mod tests {
 
         // We want to call get_type on the assignment expression and widen it with Type::Int
         let (_, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+        let chained_symbol_table =
+            chained_symbol_table.expect("Chained symbol table should be generated successfully.");
 
         let assignment_type = chained_symbol_table.get("a").unwrap().type_;
         assert_eq!(assignment_type, Type::Int);
 
-        let assignment_type = Expr::Assign(
-            "a".to_string(),
-            Box::new(Expr::Const(Consts::Int(12))),
-            None,
-        )
-        .get_type(&chained_symbol_table) // this is the type of the assignment
+        let assignment_type = codegen::expr_type::HasType::get_type(
+            &Expr::Assign(
+                "a".to_string(),
+                Box::new(Expr::Const(Consts::Int(12))),
+                None,
+            ),
+            &chained_symbol_table,
+        ) // this is the type of the assignment
         .unwrap();
 
         assert_eq!(assignment_type, Type::Int);
@@ -174,8 +196,11 @@ mod tests {
         ";
 
         let (_, chained_symbol_table) = get_ast_and_chained_symbol_table(src);
+        let chained_symbol_table =
+            chained_symbol_table.expect("Chained symbol table should be generated successfully.");
 
         let assignment_type = chained_symbol_table.get("arr").unwrap().type_;
+
         assert_eq!(assignment_type, Type::Array(Box::new(Type::Int), Some(10)));
 
         let index_expr = Expr::Index(
@@ -183,8 +208,7 @@ mod tests {
             Box::new(Expr::Const(Consts::Int(3))),
         );
 
-        let index_type = index_expr
-            .get_type(&chained_symbol_table)
+        let index_type = codegen::expr_type::HasType::get_type(&index_expr, &chained_symbol_table)
             .expect("Should get type of indexed expression.");
 
         assert_eq!(index_type, Type::Int);
