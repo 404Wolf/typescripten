@@ -1,4 +1,4 @@
-use crate::parse::parse::Consts;
+use parse::symbols::Consts;
 
 type VarType = String;
 

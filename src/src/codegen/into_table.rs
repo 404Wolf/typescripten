@@ -1,12 +1,6 @@
-use crate::{
-    parse::{
-        symbols::{Expr, Stmt, StmtList},
-        table::ChainedSymbolTable,
-    },
-    types::Type,
-};
-use rayon::prelude::*;
-use std::sync::{Arc, Mutex};
+use parse::symbols::{Expr, Stmt, StmtList, Type};
+
+use crate::{expr_type::HasType, table::ChainedSymbolTable};
 
 #[derive(Clone, Debug)]
 pub struct Assignment {
@@ -16,46 +10,43 @@ pub struct Assignment {
 }
 
 #[derive(Debug, Clone)]
-enum TypeError {
+pub enum TypeError {
     AssignmentTypeMismatch,
 }
 
 #[derive(Debug, Clone)]
-enum ParseError {
+pub enum ParseError {
     TypeError(TypeError),
     ReferenceError,
 }
 
-impl<'a> TryInto<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
+impl TryFrom<StmtList> for ChainedSymbolTable<Assignment> {
     type Error = ParseError;
 
-    fn try_into(self) -> Result<Arc<Mutex<ChainedSymbolTable<Assignment>>>, Self::Error> {
-        let symbol_table = Arc::new(Mutex::new(ChainedSymbolTable::<Assignment>::default()));
+    fn try_from(stmt_list: StmtList) -> Result<Self, Self::Error> {
+        let mut symbol_table = ChainedSymbolTable::<Assignment>::default();
 
-        match self {
+        match stmt_list {
             StmtList::Stmt(stmts) => {
                 fn process_stmt(
                     stmt: &Stmt,
-                    symbol_table: &Arc<Mutex<ChainedSymbolTable<Assignment>>>,
+                    symbol_table: &mut ChainedSymbolTable<Assignment>,
                 ) -> Result<(), ParseError> {
                     match stmt {
                         Stmt::Expr(expr) => {
                             match expr.as_ref() {
                                 Expr::Declare(types, id) => {
-                                    if let Ok(mut table) = symbol_table.lock() {
-                                        table.insert(
-                                            id.clone(),
-                                            Assignment {
-                                                type_: types.clone(),
-                                                value: None,
-                                                is_temp: false,
-                                            },
-                                        );
-                                    }
-
+                                    symbol_table.insert(
+                                        id.clone(),
+                                        Assignment {
+                                            type_: types.clone(),
+                                            value: None,
+                                            is_temp: false,
+                                        },
+                                    );
                                     Ok(())
                                 }
-                                Expr::Assign(id, value, indexes) => {
+                                Expr::Assign(id, value, _indexes) => {
                                     // assigning value into id `id[...indexes] = <value>`
                                     // Ignore indexing for now
                                     let type_of_expr = value
@@ -63,16 +54,13 @@ impl<'a> TryInto<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
                                         .get_type(symbol_table)
                                         .ok_or(ParseError::ReferenceError)?;
 
-                                    let symbol_table = symbol_table.lock().unwrap();
-
                                     // Table is the active scope
-                                    Ok(if let Some(assignment) = symbol_table.get(id).clone() {
+                                    if let Some(assignment) = symbol_table.get(id) {
                                         // Get the value of id at the current scope
 
                                         // Auto widen the type of the key-val
                                         // relation to be the widest of
                                         // expression
-                                        // First we rerus
                                         let widened_type = assignment
                                             .type_
                                             .widen(&type_of_expr)
@@ -84,22 +72,28 @@ impl<'a> TryInto<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
                                         // can't assign to something that is
                                         // smaller)
                                         if type_of_expr != widened_type {
-                                            Err(ParseError::TypeError(
+                                            return Err(ParseError::TypeError(
                                                 TypeError::AssignmentTypeMismatch,
-                                            ))?
+                                            ));
                                         }
-                                    })
+                                    }
+                                    Ok(())
                                 }
                                 _ => Ok(()),
                             }
                         }
                         Stmt::Block(block_stmts) => {
-                            let child_scope = ChainedSymbolTable::add_child(symbol_table);
+                            // Push a new scope for the block
+                            symbol_table.push_scope();
 
-                            block_stmts
-                                .into_par_iter()
-                                .try_for_each(|stmt| process_stmt(&stmt, &child_scope));
+                            // Process all statements in the block
+                            for stmt in block_stmts {
+                                process_stmt(stmt, symbol_table)?;
+                            }
 
+                            // Pop the scope when exiting the block
+                            symbol_table.pop_scope();
+                            
                             Ok(())
                         }
                         // TODO! not parsing else statements
@@ -109,9 +103,9 @@ impl<'a> TryInto<Arc<Mutex<ChainedSymbolTable<Assignment>>>> for StmtList {
                     }
                 }
 
-                stmts
-                    .into_iter()
-                    .for_each(|stmt| Ok(process_stmt(&stmt, &symbol_table))?);
+                for stmt in &stmts {
+                    process_stmt(stmt, &mut symbol_table)?;
+                }
             }
         }
 

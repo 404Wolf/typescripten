@@ -1,12 +1,12 @@
 [dependencies]
-ariadne = "0.5.1"
-chumsky = {version = "0.11.1", features = ["regex"]}
 clap = {version = "4.5.48", features = ["derive"]}
 env_logger = "0.11.8"
-inkwell = {version = "0.4", features = ["llvm15-0", "no-libffi-linking"]}
 log = "0.4.28"
+chumsky = {version = "0.11.1", features = ["regex"]}
 logos = "0.15.1"
-rayon = "1.11.0"
+parse = {path = "src/parse"}
+codegen = {path = "src/codegen"}
+ariadne = "0.6.0"
 
 [dependencies.uuid]
 version = "1.18.1"
@@ -16,3 +16,7 @@ features = ["v4"]
 name = "compiler"
 version = "0.1.0"
 edition = "2024"
+
+[workspace]
+members = [".", "src/parse", "src/codegen", "src/compile"]
+resolver = "2"

@@ -1,27 +1,4 @@
-#[derive(Clone, Debug, PartialEq)]
-pub enum Type {
-    Int,
-    Float,
-    Boolean,
-    Array(Box<Type>, Option<usize>),
-}
-
-impl std::fmt::Display for Type {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Type::Int => write!(f, "int"),
-            Type::Float => write!(f, "float"),
-            Type::Boolean => write!(f, "bool"),
-            Type::Array(inner_type, size_opt) => {
-                if let Some(size) = size_opt {
-                    write!(f, "{}[{}]", inner_type, size)
-                } else {
-                    write!(f, "{}[]", inner_type)
-                }
-            }
-        }
-    }
-}
+use parse::symbols::Type;
 
 pub trait MaybeIndex {
     fn get_ptr_to_idx_type(array_type: &Type, index: &[usize]) -> Option<usize>;
@@ -69,19 +46,6 @@ impl MaybeIndex for Type {
             (Some(dims), current_type.clone())
         } else {
             (None, array_type.clone())
-        }
-    }
-}
-
-impl Type {
-    /// Returns the widened type if possible, or None if they cannot be widened.
-    pub fn widen(&self, other: &Self) -> Option<Self> {
-        match (self, other) {
-            (Type::Int, Type::Float) | (Type::Float, Type::Int) => Some(Type::Float),
-            (Type::Int, Type::Int) => Some(Type::Int),
-            (Type::Float, Type::Float) => Some(Type::Float),
-            (Type::Boolean, Type::Boolean) => Some(Type::Boolean),
-            _ => None,
         }
     }
 }

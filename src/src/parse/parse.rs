@@ -5,20 +5,12 @@ use chumsky::{
 };
 use log::info;
 use logos::Logos;
-use rayon::prelude::*;
 use std::{
     collections::LinkedList,
     sync::{Arc, Mutex},
 };
 
-use crate::{
-    parse::{
-        into_table::Assignment,
-        symbols::{Consts, Expr, Keywords, Stmt, StmtList, Token},
-        table::ChainedSymbolTable,
-    },
-    types::Type,
-};
+use crate::symbols::*;
 
 pub fn parser<'tokens, 'src: 'tokens, I>()
 -> impl Parser<'tokens, I, StmtList, extra::Err<Rich<'tokens, Token<'src>>>>
@@ -328,50 +320,4 @@ where
         .repeated()
         .collect::<LinkedList<_>>()
         .map(StmtList::Stmt)
-}
-
-pub fn parse(src: &str) {
-    let token_iter = Token::lexer(src).spanned().map(|(tok, span)| {
-        let span = Into::<SimpleSpan<usize>>::into(span);
-        match tok {
-            Ok(tok) => (tok, span),
-            Err(()) => (Token::Error, span),
-        }
-    });
-
-    let token_stream =
-        Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
-
-    let (ast, errs) = parser().parse(token_stream).into_output_errors();
-
-    if let Some(ast) = ast {
-        println!("\nParsing completed successfully.\n");
-
-        println!("Lex tokens:");
-        println!("{}\n", &ast);
-
-        println!("Full parse AST:");
-        println!("{:#?}\n", &ast);
-
-        let chained_symbol_table: Arc<Mutex<ChainedSymbolTable<Assignment>>> =
-            ast.try_into().unwrap();
-        let chained_symbol_table = chained_symbol_table.lock().unwrap();
-
-        println!("Symbol Table:");
-        println!("{:#?}\n", chained_symbol_table);
-    } else {
-        errs.into_iter().for_each(|e| {
-            Report::build(ReportKind::Error, ((), e.span().into_range()))
-                .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
-                .with_message(e.to_string())
-                .with_label(
-                    Label::new(((), e.span().into_range()))
-                        .with_message(e.reason().to_string())
-                        .with_color(Color::Red),
-                )
-                .finish()
-                .print(Source::from(&src))
-                .unwrap()
-        });
-    }
 }

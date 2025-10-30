@@ -1,0 +1,14 @@
+[dependencies]
+chumsky = {version = "0.11.1", features = ["regex"]}
+ariadne = "0.5.1"
+logos = "0.15.1"
+log = "0.4.28"
+
+[lib]
+name = "parse"
+path = "mod.rs"
+
+[package]
+name = "parse"
+version = "0.1.0"
+edition = "2024"

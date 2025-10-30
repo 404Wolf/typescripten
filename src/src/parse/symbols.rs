@@ -1,14 +1,43 @@
 use logos::Logos;
-use std::{
-    collections::LinkedList,
-    fmt,
-    sync::{Arc, Mutex},
-};
+use std::{collections::LinkedList, fmt};
 
-use crate::{
-    parse::{into_table::Assignment, table::ChainedSymbolTable},
-    types::Type,
-};
+#[derive(Clone, Debug, PartialEq)]
+pub enum Type {
+    Int,
+    Float,
+    Boolean,
+    Array(Box<Type>, Option<usize>),
+}
+
+impl Type {
+    /// Returns the widened type if possible, or None if they cannot be widened.
+    pub fn widen(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (Type::Int, Type::Float) | (Type::Float, Type::Int) => Some(Type::Float),
+            (Type::Int, Type::Int) => Some(Type::Int),
+            (Type::Float, Type::Float) => Some(Type::Float),
+            (Type::Boolean, Type::Boolean) => Some(Type::Boolean),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Int => write!(f, "int"),
+            Type::Float => write!(f, "float"),
+            Type::Boolean => write!(f, "bool"),
+            Type::Array(inner_type, size_opt) => {
+                if let Some(size) = size_opt {
+                    write!(f, "{}[{}]", inner_type, size)
+                } else {
+                    write!(f, "{}[]", inner_type)
+                }
+            }
+        }
+    }
+}
 
 #[derive(Logos, Clone, Debug, PartialEq)]
 pub enum Token<'a> {
@@ -136,85 +165,6 @@ pub enum Expr {
     Declare(Type, String),
     Group(Box<Expr>),
     Keyword(Keywords),
-}
-
-impl Expr {
-    /// Get the type of an expression, which is automatically widened as needed.
-    ///
-    /// The input chained_symbol_table must be passed at the correct scope that
-    /// the expr exists at.
-    pub fn get_type(
-        &self,
-        chained_symbol_table: &Arc<Mutex<ChainedSymbolTable<Assignment>>>,
-    ) -> Option<Type> {
-        match self {
-            Expr::Add(left, right)
-            | Expr::Sub(left, right)
-            | Expr::Mul(left, right)
-            | Expr::Div(left, right) => {
-                let left_type = left.as_ref().get_type(chained_symbol_table)?;
-                let right_type = right.as_ref().get_type(chained_symbol_table)?;
-                left_type.widen(&right_type)
-            }
-            Expr::Eql(_, _)
-            | Expr::NEq(_, _)
-            | Expr::Not(_)
-            | Expr::LT(_, _)
-            | Expr::LEq(_, _)
-            | Expr::GT(_, _)
-            | Expr::GEq(_, _) => Some(Type::Boolean),
-            Expr::ID(name) => {
-                // Look up the identifier in the symbol table
-                chained_symbol_table
-                    .lock()
-                    .ok()
-                    .and_then(|table| table.get(name).map(|assignment| assignment.type_.clone()))
-            }
-            Expr::Const(c) => Some(match c {
-                Consts::Int(_) => Type::Int,
-                Consts::Float(_) => Type::Float,
-                Consts::Boolean(_) => Type::Boolean,
-            }),
-            Expr::Group(e) => e.as_ref().get_type(chained_symbol_table),
-            Expr::Declare(t, _) => Some(t.clone()),
-            Expr::Keyword(_) => Some(Type::Boolean),
-            Expr::Assign(name, _, indexes) => {
-                let var_type = chained_symbol_table
-                    .lock()
-                    .ok()
-                    .and_then(|table| table.get(name).map(|assignment| assignment.type_.clone()));
-                println!(
-                    "Getting type of assignment to '{}' with indexes {:?}",
-                    name, indexes
-                );
-
-                match indexes {
-                    // Look up the identifier in the symbol table
-                    None => {
-                        println!("Assigning to variable '{}'", name);
-                        var_type
-                    }
-                    Some(indexes) => indexes.iter().fold(var_type, |acc, _| match acc {
-                        Some(Type::Array(inner_type, _)) => {
-                            println!("Indexing into array of type {:?}", inner_type);
-                            Some(*inner_type)
-                        }
-                        _ => None,
-                    }),
-                }
-            }
-            Expr::Index(expr, _) => {
-                // test[5 + 5] widens to (typeof test)
-                // int[5] a; and we do a[4], then we get Type::Int
-                let base_type = expr.as_ref().get_type(chained_symbol_table).unwrap();
-
-                match base_type {
-                    Type::Array(inner_type, _) => Some(*inner_type),
-                    _ => None,
-                }
-            }
-        }
-    }
 }
 
 #[derive(Clone, Debug)]

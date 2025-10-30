@@ -1,0 +1,11 @@
+[dependencies]
+inkwell = {version = "0.4", features = ["llvm15-0", "no-libffi-linking"]}
+
+[lib]
+name = "compile"
+path = "mod.rs"
+
+[package]
+name = "compile"
+version = "0.1.0"
+edition = "2024"

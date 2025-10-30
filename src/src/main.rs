@@ -1,13 +1,17 @@
-// #![feature(error_iter)]
-
-mod codes;
-mod parse;
-mod types;
-
+use ariadne::*;
+use chumsky::input::Stream;
+use chumsky::span::SimpleSpan;
+use chumsky::prelude::*;
+use chumsky::Parser as ChParser;
 use clap::Parser;
+use codegen::into_table::Assignment;
+use codegen::table::ChainedSymbolTable;
 use env_logger::{Builder, Env};
-use std::fs;
-use std::io::{self, Read, Write};
+use logos::Logos;
+use parse::parse::parser;
+use parse::symbols::Token;
+use std::io::{Read, Write};
+use std::{fs, io};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -32,5 +36,46 @@ fn main() {
         fs::read_to_string(&args.input).expect("Failed to read file")
     };
 
-    let _ = parse::parse::parse(&src);
+    let token_iter = Token::lexer(src.as_str()).spanned().map(|(tok, span)| {
+        let span = Into::<SimpleSpan<usize>>::into(span);
+        match tok {
+            Ok(tok) => (tok, span),
+            Err(()) => (Token::Error, span),
+        }
+    });
+
+    let token_stream =
+        Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
+
+    let parser = parser();
+    let (ast, errs) = parser.parse(token_stream).into_output_errors();
+
+    if let Some(ast) = ast {
+        println!("\nParsing completed successfully.\n");
+
+        println!("Lex tokens:");
+        println!("{}\n", &ast);
+
+        println!("Full parse AST:");
+        println!("{:#?}\n", &ast);
+
+        let chained_symbol_table: ChainedSymbolTable<Assignment> = ast.try_into().unwrap();
+
+        println!("Symbol Table:");
+        println!("{:#?}\n", chained_symbol_table);
+    } else {
+        errs.into_iter().for_each(|e| {
+            Report::build(ReportKind::Error, ((), e.span().into_range()))
+                .with_config(ariadne::Config::new().with_index_type(ariadne::IndexType::Byte))
+                .with_message(e.to_string())
+                .with_label(
+                    Label::new(((), e.span().into_range()))
+                        .with_message(e.reason().to_string())
+                        .with_color(Color::Red),
+                )
+                .finish()
+                .print(Source::from(&src))
+                .unwrap()
+        });
+    }
 }
