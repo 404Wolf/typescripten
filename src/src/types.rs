@@ -6,6 +6,23 @@ pub enum Type {
     Array(Box<Type>, Option<usize>),
 }
 
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Int => write!(f, "int"),
+            Type::Float => write!(f, "float"),
+            Type::Boolean => write!(f, "bool"),
+            Type::Array(inner_type, size_opt) => {
+                if let Some(size) = size_opt {
+                    write!(f, "{}[{}]", inner_type, size)
+                } else {
+                    write!(f, "{}[]", inner_type)
+                }
+            }
+        }
+    }
+}
+
 pub trait MaybeIndex {
     fn get_ptr_to_idx_type(array_type: &Type, index: &[usize]) -> Option<usize>;
     fn get_arr_dim_list(array_type: &Type) -> (Option<Vec<usize>>, Type);
@@ -122,5 +139,13 @@ mod tests {
             Some(10),
         );
         assert_eq!(nested_array.size_of(), 200); // 10 * (5 * 4 (4 bytes))
+    }
+
+    #[test]
+    fn test_widen_int_plus_int() {
+        let t1 = Type::Int;
+        let t2 = Type::Int;
+        let widened = t1.widen(&t2);
+        assert_eq!(widened, Some(Type::Int));
     }
 }

@@ -10,7 +10,7 @@ rayon = "1.11.0"
 
 [dependencies.uuid]
 version = "1.18.1"
-features = [ "v4" ]
+features = ["v4"]
 
 [package]
 name = "compiler"

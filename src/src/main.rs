@@ -1,11 +1,8 @@
 // #![feature(error_iter)]
 
-pub(crate) use crate::parse::parse;
-
-pub mod collections;
+mod codes;
 mod parse;
 mod types;
-mod codes;
 
 use clap::Parser;
 use env_logger::{Builder, Env};
@@ -35,5 +32,5 @@ fn main() {
         fs::read_to_string(&args.input).expect("Failed to read file")
     };
 
-    let _ = parse(&src);
+    let _ = parse::parse::parse(&src);
 }
