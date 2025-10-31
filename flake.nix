@@ -57,8 +57,10 @@
                 clang
                 rustPlatform.rustLibSrc
                 rust-analyzer
-              ] ++ packages.build.nativeBuildInputs
+              ]
+              ++ packages.build.nativeBuildInputs
             );
+            RUST_BACKTRACE = "full";
             RUSTFLAGS = "-L ${pkgs.libffi}/lib -l ffi";
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
             LLVM_SYS_150_PREFIX = "${pkgs.llvm.dev}";
