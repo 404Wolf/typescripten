@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fmt;
-use uuid::Uuid;
 
 pub trait SymbolValue: fmt::Debug + Clone {}
 impl<T: fmt::Debug + Clone> SymbolValue for T {}
@@ -10,7 +9,14 @@ pub struct SymbolTable<T>
 where
     T: SymbolValue,
 {
-    symbols: HashMap<String, T>,
+    symbols: HashMap<ChainedSymbolTableEntry, T>,
+    auto_key_counter: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ChainedSymbolTableEntry {
+    key: String,
+    was_auto: bool,
 }
 
 pub struct ChainedSymbolTable<T>
@@ -27,16 +33,30 @@ where
     pub fn new() -> Self {
         Self {
             symbols: HashMap::new(),
+            auto_key_counter: 0,
         }
     }
 
     pub fn insert(&mut self, key: String, value: T) {
-        self.symbols.insert(key, value);
+        self.symbols.insert(
+            ChainedSymbolTableEntry {
+                key,
+                was_auto: false,
+            },
+            value,
+        );
     }
 
     pub fn insert_auto(&mut self, value: T) -> String {
-        let key = Uuid::new_v4().to_string();
-        self.symbols.insert(key.clone(), value);
+        let key = format!("__auto_var_{}__", self.auto_key_counter);
+        self.auto_key_counter += 1;
+        self.symbols.insert(
+            ChainedSymbolTableEntry {
+                key: key.clone(),
+                was_auto: true,
+            },
+            value,
+        );
         key
     }
 
@@ -77,6 +97,7 @@ where
         }
     }
 
+    /// Insert a value, using a reserved name as the key
     pub fn insert_auto(&mut self, value: T) -> String {
         if let Some(current) = self.stack.last_mut() {
             current.insert_auto(value)
@@ -112,7 +133,8 @@ where
 
     /// Get all symbols from all scopes
     pub fn symbols(&self) -> Vec<Vec<String>> {
-        self.stack.iter()
+        self.stack
+            .iter()
             .map(|scope| scope.keys().cloned().collect())
             .collect()
     }
@@ -125,15 +147,16 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ChainedSymbolTable {{\n")?;
         write!(f, "  scopes: [\n")?;
-        
+
         for (i, scope) in self.stack.iter().enumerate() {
             write!(f, "    Scope {}: {{\n", i)?;
-            
-            let symbols: Vec<String> = scope.symbols
+
+            let symbols: Vec<String> = scope
+                .symbols
                 .iter()
                 .map(|(k, v)| format!("{}: {:?}", k, v))
                 .collect();
-                
+
             if symbols.is_empty() {
                 write!(f, "      symbols: []\n")?;
             } else {
@@ -143,10 +166,10 @@ where
                 }
                 write!(f, "      ]\n")?;
             }
-            
+
             write!(f, "    }}\n")?;
         }
-        
+
         write!(f, "  ]\n")?;
         write!(f, "}}")
     }
@@ -198,29 +221,29 @@ mod tests {
     #[test]
     fn test_nested_scopes() {
         let mut table = ChainedSymbolTable::<i32>::default();
-        
+
         // Global scope
         table.insert("global".into(), 1);
-        
+
         // First nested scope
         table.push_scope();
         table.insert("local1".into(), 2);
-        
+
         // Second nested scope
         table.push_scope();
         table.insert("local2".into(), 3);
-        
+
         // All variables should be accessible
         assert_eq!(table.get("global"), Some(1));
         assert_eq!(table.get("local1"), Some(2));
         assert_eq!(table.get("local2"), Some(3));
-        
+
         // Pop one scope
         table.pop_scope();
         assert_eq!(table.get("global"), Some(1));
         assert_eq!(table.get("local1"), Some(2));
         assert_eq!(table.get("local2"), None);
-        
+
         // Pop another scope
         table.pop_scope();
         assert_eq!(table.get("global"), Some(1));
