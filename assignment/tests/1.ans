@@ -1,8 +1,0 @@
-{ basic id ; while ( true ) id = id + num ; } 
-
-Parsing completed successfully.
-
-Symbol Table: 
-----
-ID: i
-----
