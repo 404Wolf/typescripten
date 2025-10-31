@@ -40,10 +40,10 @@ in
 rustPlatform.buildRustPackage {
   pname = "compiler";
   version = "0.0.1";
-  src = ./../src;
+  src = ../.;
 
   cargoLock = {
-    lockFile = ../src/Cargo.lock;
+    lockFile = ../Cargo.lock;
   };
 
   nativeBuildInputs = [
