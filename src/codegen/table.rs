@@ -1,76 +1,79 @@
 use std::collections::HashMap;
 use std::fmt;
 
-pub trait Symbol: fmt::Debug + fmt::Display {}
-impl<T: fmt::Debug + fmt::Display> Symbol for T {}
+pub trait Symbol: fmt::Debug + fmt::Display + Clone {}
+impl<T: fmt::Debug + fmt::Display + Clone> Symbol for T {}
 
-pub trait Identifier: fmt::Debug + fmt::Display + std::hash::Hash + Eq {}
-impl<T: fmt::Debug + fmt::Display + std::hash::Hash + Eq> Identifier for T {}
+pub trait Identifier: fmt::Debug + fmt::Display + std::hash::Hash + Eq + Clone {}
+impl<T: fmt::Debug + fmt::Display + std::hash::Hash + Eq + Clone> Identifier for T {}
+
+type ScopeNode<I: Identifier, A: Symbol> = HashMap<I, A>;
 
 #[derive(Debug)]
 pub struct ChainedSymbolTable<I: Identifier, A: Symbol> {
-    table: HashMap<I, A>,
-    children: Vec<ChainedSymbolTable<I, A>>,
+    parents: Vec<ScopeNode<I, A>>,
+    pub log: Vec<ScopeNode<I, A>>,
 }
 
 impl<I: Identifier, A: Symbol> Default for ChainedSymbolTable<I, A> {
     fn default() -> Self {
         ChainedSymbolTable {
-            table: HashMap::new(),
-            children: Vec::new(),
+            parents: vec![HashMap::new()],
+            log: Vec::new(),
         }
     }
 }
 
 impl<I: Identifier, A: Symbol> ChainedSymbolTable<I, A> {
     pub fn push_scope(&mut self) {
-        let new_table = ChainedSymbolTable::default()
-        self.children.push(new_table)
-        new_table
+        self.parents.push(HashMap::new());
     }
 
-    pub fn pop_scope(&mut self) {
-        self.children.pop();
+    pub fn pop_scope(&mut self) -> Option<ScopeNode<I, A>> {
+        let old = self.parents.pop();
+        self.log.push(old.clone().unwrap());
+        old
     }
 
-    pub fn insert(&mut self, key: I, value: A) {
-        self.table.insert(key, value);
-    }
-
-    pub fn get(&self, key: &I) -> Option<&A> {
-        self.table.get(key)
-    }
-}
-
-impl<I: Identifier, A: Symbol> fmt::Display for ChainedSymbolTable<I, A> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ChainedSymbolTable {{\n")?;
-        write!(f, "  scopes: [\n")?;
-
-        for (i, scope) in self.children.iter().enumerate() {
-            write!(f, "    Scope {}: {{\n", i)?;
-
-            let symbols: Vec<String> = scope
-                .table
-                .iter()
-                .map(|(k, v)| format!("{}: {}", k, v))
-                .collect();
-
-            if symbols.is_empty() {
-                write!(f, "      symbols: []\n")?;
-            } else {
-                write!(f, "      symbols: [\n")?;
-                for symbol in &symbols {
-                    write!(f, "        {}\n", symbol)?;
-                }
-                write!(f, "      ]\n")?;
-            }
-
-            write!(f, "    }}\n")?;
+    /// Get the current scope, or search through parent scopes if not found
+    pub fn get(&self, key: &I) -> Option<A> {
+        if self.get_current_scope().is_none() {
+            return None;
         }
 
-        write!(f, "  ]\n")?;
-        write!(f, "}}")
+        for scope in self.parents.iter().rev() {
+            if let Some(value) = scope.get(key) {
+                return Some(value.clone());
+            }
+        }
+
+        None
+    }
+
+    /// Search upwards and update the value of the first matching key found
+    pub fn update(&mut self, key: &I, value: A) -> Result<(), ()> {
+        for scope in self.parents.iter_mut().rev() {
+            if scope.contains_key(key) {
+                scope.insert(key.clone(), value);
+                return Ok(());
+            }
+        }
+        Err(())
+    }
+
+    /// Add an item to the current scope only. Adds a top level scope if you have popped off all scopes.
+    pub fn insert(&mut self, key: I, value: A) {
+        if self.get_current_scope().is_none() {
+            self.push_scope();
+        }
+
+        if let Some(current_scope) = self.parents.last_mut() {
+            current_scope.insert(key, value);
+        }
+    }
+
+    pub fn get_current_scope(&self) -> Option<&ScopeNode<I, A>> {
+        self.parents.last()
     }
 }
 
@@ -84,8 +87,8 @@ mod tests {
         table.insert("a".to_string(), 10);
         table.insert("b".to_string(), 20);
 
-        assert_eq!(table.get(&"a".to_string()), Some(&10));
-        assert_eq!(table.get(&"b".to_string()), Some(&20));
+        assert_eq!(table.get(&"a".to_string()), Some(10));
+        assert_eq!(table.get(&"b".to_string()), Some(20));
         assert_eq!(table.get(&"c".to_string()), None);
     }
 
@@ -96,19 +99,12 @@ mod tests {
 
         // Push a new scope (like entering a new block)
         table.push_scope();
-        // Note: With current implementation, insert() adds to current table, not child scope
+        // Insert into new scope
         table.insert("y".to_string(), 200);
 
-        assert_eq!(table.get(&"y".to_string()), Some(&200));
-        assert_eq!(table.get(&"x".to_string()), Some(&100)); // from same scope
+        assert_eq!(table.get(&"y".to_string()), Some(200));
+        assert_eq!(table.get(&"x".to_string()), Some(100)); // from parent scope
         assert_eq!(table.get(&"z".to_string()), None);
-
-        // Pop the scope (like exiting the block)
-        table.pop_scope();
-        // Note: With current implementation, both x and y are still accessible
-        // because they were both inserted into the main table
-        assert_eq!(table.get(&"y".to_string()), Some(&200)); // still accessible
-        assert_eq!(table.get(&"x".to_string()), Some(&100)); // still accessible
     }
 
     #[test]
@@ -120,7 +116,7 @@ mod tests {
         table.insert(var_name.clone(), var_value.clone());
 
         let retrieved = table.get(&var_name);
-        assert_eq!(retrieved, Some(&var_value));
+        assert_eq!(retrieved, Some(var_value));
     }
 
     #[test]
@@ -138,45 +134,30 @@ mod tests {
         table.push_scope();
         table.insert("local2".to_string(), 3);
 
-        // All variables should be accessible (with current implementation,
-        // all are in the main table)
-        assert_eq!(table.get(&"global".to_string()), Some(&1));
-        assert_eq!(table.get(&"local1".to_string()), Some(&2));
-        assert_eq!(table.get(&"local2".to_string()), Some(&3));
-
-        // Pop one scope
-        table.pop_scope();
-        // With current implementation, variables are still accessible
-        assert_eq!(table.get(&"global".to_string()), Some(&1));
-        assert_eq!(table.get(&"local1".to_string()), Some(&2));
-        assert_eq!(table.get(&"local2".to_string()), Some(&3));
-
-        // Pop another scope
-        table.pop_scope();
-        // With current implementation, variables are still accessible
-        assert_eq!(table.get(&"global".to_string()), Some(&1));
-        assert_eq!(table.get(&"local1".to_string()), Some(&2));
-        assert_eq!(table.get(&"local2".to_string()), Some(&3));
+        // All variables should be accessible through scope chain
+        assert_eq!(table.get(&"global".to_string()), Some(1));
+        assert_eq!(table.get(&"local1".to_string()), Some(2));
+        assert_eq!(table.get(&"local2".to_string()), Some(3));
     }
 
-    fn get_gets_going_upwards() {
+    #[test]
+    fn test_scope_chain_lookup() {
         let mut table = ChainedSymbolTable::<String, i32>::default();
 
         // Global scope
         table.insert("global".to_string(), 1);
 
-        // Add to child scope
-        let new_table = table.push_scope();
-        new_table.insert("local1".to_string(), 2);
+        // First nested scope
+        table.push_scope();
+        table.insert("local1".to_string(), 2);
 
         // Second nested scope
         table.push_scope();
         table.insert("local2".to_string(), 3);
 
-        // All variables should be accessible (with current implementation,
-        // all are in the main table)
-        assert_eq!(table.get(&"global".to_string()), Some(&1));
-        assert_eq!(table.get(&"local1".to_string()), Some(&2));
-        assert_eq!(table.get(&"local2".to_string()), Some(&3));
+        // All variables should be accessible through scope chain
+        assert_eq!(table.get(&"global".to_string()), Some(1));
+        assert_eq!(table.get(&"local1".to_string()), Some(2));
+        assert_eq!(table.get(&"local2".to_string()), Some(3));
     }
 }

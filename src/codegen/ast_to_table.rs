@@ -42,6 +42,12 @@ pub struct AssignmentValue {
     pub value: Option<Expr>,
 }
 
+impl PartialEq for AssignmentValue {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_ == other.type_
+    }
+}
+
 impl AssignmentValue {
     pub fn new(type_: Type, value: Option<Expr>) -> Self {
         AssignmentValue { type_, value }
@@ -76,12 +82,16 @@ impl Default for AssignmentCST {
 }
 
 impl AssignmentCST {
-    pub fn get(&self, key: &str) -> Option<&AssignmentValue> {
+    pub fn get_table(&self) -> &ChainedSymbolTable<AssignmentIdentifier, AssignmentValue> {
+        &self.table
+    }
+
+    pub fn get(&self, key: &str) -> Option<AssignmentValue> {
         self.table
             .get(&AssignmentIdentifier::new(key.to_string(), false))
     }
 
-    pub fn get_tmp(&self, key: &str) -> Option<&AssignmentValue> {
+    pub fn get_tmp(&self, key: &str) -> Option<AssignmentValue> {
         self.table
             .get(&AssignmentIdentifier::new(key.to_string(), true))
     }
@@ -146,7 +156,7 @@ impl TryFrom<StmtList> for AssignmentCST {
     type Error = ParseError;
 
     fn try_from(stmt_list: StmtList) -> Result<Self, Self::Error> {
-        let mut symbol_table = AssignmentCST::default();
+        let mut chained_symbol_table = AssignmentCST::default();
 
         match stmt_list {
             StmtList::Stmt(stmts) => {
@@ -236,19 +246,13 @@ impl TryFrom<StmtList> for AssignmentCST {
                 }
 
                 for stmt in &stmts {
-                    println!("{:?}", stmt);
-                    process_stmt(stmt, &mut symbol_table)?;
+                    process_stmt(stmt, &mut chained_symbol_table)?;
                 }
             }
         }
 
-        Ok(symbol_table)
-    }
-}
-
-impl std::fmt::Display for AssignmentCST {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.table)
+        chained_symbol_table.pop_scope();
+        Ok(chained_symbol_table)
     }
 }
 

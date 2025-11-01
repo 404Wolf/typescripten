@@ -81,10 +81,11 @@ impl HasType for Expr {
             Expr::Index(expr, _) => {
                 // test[5 + 5] widens to (typeof test)
                 // int[5] a; and we do a[4], then we get Type::Int
-                let base_type = expr.as_ref().get_type(chained_symbol_table).unwrap();
+                println!("Getting type of indexed expr: {}", expr);
+                let base_type = expr.as_ref().get_type(chained_symbol_table);
 
                 match base_type {
-                    Type::Array(inner_type, _) => Some(*inner_type),
+                    Some(Type::Array(inner_type, _)) => Some(*inner_type),
                     _ => None,
                 }
             }
