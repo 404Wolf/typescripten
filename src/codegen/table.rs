@@ -1,4 +1,3 @@
-use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -7,11 +6,6 @@ impl<T: fmt::Debug + fmt::Display> Symbol for T {}
 
 pub trait Identifier: fmt::Debug + fmt::Display + std::hash::Hash + Eq {}
 impl<T: fmt::Debug + fmt::Display + std::hash::Hash + Eq> Identifier for T {}
-
-#[derive(Debug, Clone)]
-pub struct SymbolTable<I: Identifier, A: Symbol> {
-    symbols: HashMap<I, A>,
-}
 
 #[derive(Debug)]
 pub struct ChainedSymbolTable<I: Identifier, A: Symbol> {
@@ -30,7 +24,9 @@ impl<I: Identifier, A: Symbol> Default for ChainedSymbolTable<I, A> {
 
 impl<I: Identifier, A: Symbol> ChainedSymbolTable<I, A> {
     pub fn push_scope(&mut self) {
-        self.children.push(ChainedSymbolTable::default());
+        let new_table = ChainedSymbolTable::default()
+        self.children.push(new_table)
+        new_table
     }
 
     pub fn pop_scope(&mut self) {
@@ -158,6 +154,27 @@ mod tests {
         // Pop another scope
         table.pop_scope();
         // With current implementation, variables are still accessible
+        assert_eq!(table.get(&"global".to_string()), Some(&1));
+        assert_eq!(table.get(&"local1".to_string()), Some(&2));
+        assert_eq!(table.get(&"local2".to_string()), Some(&3));
+    }
+
+    fn get_gets_going_upwards() {
+        let mut table = ChainedSymbolTable::<String, i32>::default();
+
+        // Global scope
+        table.insert("global".to_string(), 1);
+
+        // Add to child scope
+        let new_table = table.push_scope();
+        new_table.insert("local1".to_string(), 2);
+
+        // Second nested scope
+        table.push_scope();
+        table.insert("local2".to_string(), 3);
+
+        // All variables should be accessible (with current implementation,
+        // all are in the main table)
         assert_eq!(table.get(&"global".to_string()), Some(&1));
         assert_eq!(table.get(&"local1".to_string()), Some(&2));
         assert_eq!(table.get(&"local2".to_string()), Some(&3));

@@ -1,11 +1,11 @@
-use parse::symbols::{Consts, Type};
+use parse::symbols::Consts;
 
 use crate::ast_to_table::AssignmentIdentifier;
 
-type VarType = AssignmentIdentifier;
+pub type VarType = AssignmentIdentifier;
 
 #[derive(Clone)]
-enum AddrType {
+pub enum AddrType {
     Const(Consts),
     Var(VarType),
 }

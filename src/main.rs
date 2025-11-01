@@ -1,8 +1,8 @@
 use ariadne::*;
-use chumsky::input::Stream;
-use chumsky::span::SimpleSpan;
-use chumsky::prelude::*;
 use chumsky::Parser as ChParser;
+use chumsky::input::Stream;
+use chumsky::prelude::*;
+use chumsky::span::SimpleSpan;
 use clap::Parser;
 use codegen::ast_to_table::AssignmentCST;
 use env_logger::{Builder, Env};
@@ -10,6 +10,7 @@ use logos::Logos;
 use parse::parse::parser;
 use parse::symbols::Token;
 use std::io::{Read, Write};
+use std::process::exit;
 use std::{fs, io};
 
 #[derive(Parser, Debug)]
@@ -76,5 +77,7 @@ fn main() {
                 .print(Source::from(&src))
                 .unwrap()
         });
+
+        exit(1)
     }
 }
