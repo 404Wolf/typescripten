@@ -282,4 +282,29 @@ mod tests {
         assert!(cst.get_tmp(&tmp_name2).is_some());
         assert!(cst.get("regular_var").is_some());
     }
+
+    #[test]
+    fn test_add_temp_var_and_reg_var_and_get_temp_var() {
+        let mut cst = AssignmentCST::default();
+        let temp_var_name = cst.add_tmp(Type::Float, None);
+        cst.set("regular_var", Type::Int, None);
+        let temp_var_name2 = cst.add_tmp(Type::Boolean, None);
+
+        assert_eq!(temp_var_name, "tmp_0");
+        assert_eq!(temp_var_name2, "tmp_1");
+        assert!(cst.get_tmp(&temp_var_name).is_some());
+        assert!(cst.get_tmp(&temp_var_name2).is_some());
+        assert!(cst.get("regular_var").is_some());
+    }
+
+    #[test]
+    fn add_reg_var_and_then_temp_var_and_get_temp_var() {
+        let mut cst = AssignmentCST::default();
+        cst.set("regular_var", Type::Int, None);
+        let temp_var_name = cst.add_tmp(Type::Float, None);
+
+        assert_eq!(temp_var_name, "tmp_0");
+        assert!(cst.get_tmp(&temp_var_name).is_some());
+        assert!(cst.get("regular_var").is_some());
+    }
 }
