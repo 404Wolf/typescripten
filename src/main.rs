@@ -4,8 +4,7 @@ use chumsky::span::SimpleSpan;
 use chumsky::prelude::*;
 use chumsky::Parser as ChParser;
 use clap::Parser;
-use codegen::ast_to_table::Assignment;
-use codegen::table::ChainedSymbolTable;
+use codegen::ast_to_table::AssignmentCST;
 use env_logger::{Builder, Env};
 use logos::Logos;
 use parse::parse::parser;
@@ -59,7 +58,7 @@ fn main() {
         println!("Full parse AST:");
         println!("{:#?}\n", &ast);
 
-        let chained_symbol_table: ChainedSymbolTable<Assignment> = ast.try_into().unwrap();
+        let chained_symbol_table: AssignmentCST = ast.try_into().unwrap();
 
         println!("Symbol Table:");
         println!("{:#?}\n", chained_symbol_table);

@@ -1,9 +1,12 @@
 use parse::symbols::{Consts, Expr, Type};
 
-use crate::{ast_to_table::Assignment, table::ChainedSymbolTable};
+use crate::{
+    ast_to_table::{AssignmentCST, AssignmentValue},
+    table::ChainedSymbolTable,
+};
 
 pub trait HasType {
-    fn get_type(&self, chained_symbol_table: &ChainedSymbolTable<Assignment>) -> Option<Type>;
+    fn get_type(&self, chained_symbol_table: &AssignmentCST) -> Option<Type>;
 }
 
 pub trait GetTypeAtIndexes {
@@ -27,7 +30,7 @@ impl HasType for Expr {
     ///
     /// The input chained_symbol_table must be passed at the correct scope that
     /// the expr exists at.
-    fn get_type(&self, chained_symbol_table: &ChainedSymbolTable<Assignment>) -> Option<Type> {
+    fn get_type(&self, chained_symbol_table: &AssignmentCST) -> Option<Type> {
         match self {
             Expr::Add(left, right)
             | Expr::Sub(left, right)

@@ -1,103 +1,150 @@
-use parse::symbols::Consts;
+use parse::symbols::{Consts, Type};
 
-type VarType = String;
+use crate::ast_to_table::AssignmentIdentifier;
 
-enum AddressType {
+type VarType = AssignmentIdentifier;
+
+#[derive(Clone)]
+enum AddrType {
     Const(Consts),
     Var(VarType),
-    OpCode(OptCode),
 }
 
-impl std::fmt::Display for AddressType {
+impl std::fmt::Display for AddrType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AddressType::Const(c) => write!(f, "{:?}", c),
-            AddressType::Var(v) => write!(f, "{}", v),
-            AddressType::OpCode(op) => write!(f, "{:?}", op),
+            AddrType::Const(c) => write!(f, "{:?}", c),
+            AddrType::Var(v) => write!(f, "{}", v),
         }
     }
 }
 
-struct Address {
-    pub source_a: AddressType,
-    pub source_b: AddressType,
-    pub dest: VarType,
+mod opt_codes {
+    use crate::codes::AddrType;
+
+    #[derive(Clone)]
+    pub enum BiOptCode {
+        Add,
+        Subtract,
+        Divide,
+        Multiply,
+    }
+
+    #[derive(Clone)]
+    pub enum UniOptCode {
+        Negation,
+    }
+
+    #[derive(Clone)]
+    pub enum OptCode {
+        BiOp(BiOptCode, [AddrType; 2]),
+        UniOp(UniOptCode, [AddrType; 1]),
+    }
+
+    impl std::fmt::Display for OptCode {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                OptCode::BiOp(op, [a, b]) => match op {
+                    BiOptCode::Add => write!(f, "ADD {} + {}", a, b),
+                    BiOptCode::Subtract => write!(f, "SUB {} - {}", a, b),
+                    BiOptCode::Multiply => write!(f, "MUL {} * {}", a, b),
+                    BiOptCode::Divide => write!(f, "DIV {} / {}", a, b),
+                },
+                OptCode::UniOp(op, [a]) => match op {
+                    UniOptCode::Negation => write!(f, "MINUS {}", a),
+                },
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
-enum OptCode {
-    Add,
-    Subtract,
-    Negation,
-    Divide,
-    Multiply,
+struct Instruction {
+    // also known as "address"
+    /// The operation code to be performed
+    pub opt_code: opt_codes::OptCode,
+    // The name of a variable where the result is to be stored
+    pub dest_var: VarType,
 }
 
-impl std::fmt::Debug for OptCode {
+impl Instruction {
+    fn new(opt_code: opt_codes::OptCode, dest_var: VarType) -> Self {
+        Instruction { opt_code, dest_var }
+    }
+}
+
+impl std::fmt::Display for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OptCode::Add => write!(f, "+"),
-            OptCode::Subtract => write!(f, "-"),
-            OptCode::Negation => write!(f, "minus"),
-            OptCode::Divide => write!(f, "/"),
-            OptCode::Multiply => write!(f, "*"),
-        }
+        write!(f, "{} := {}", self.dest_var, self.opt_code)
     }
 }
 
 struct IntermediateCode {
-    pub instructions: Vec<Address>,
+    pub instructions: Vec<Instruction>,
 }
 
 impl std::fmt::Display for IntermediateCode {
-    // t_1 &= \text{minus } c \\
-    // t_2 &= b * t_1 \\
-    // t_3 &= \text{minus } c \\
-    // t_4 &= b * t_3 \\
-    // t_5 &= t_2 + t_4 \\
-    // a   &= t_5
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for instruction in &self.instructions {
-            writeln!(
-                f,
-                "{} = {} {}",
-                instruction.dest, instruction.source_a, instruction.source_b
-            )?;
+            writeln!(f, "{}", instruction)?;
         }
         Ok(())
     }
 }
 
+impl Default for IntermediateCode {
+    fn default() -> Self {
+        IntermediateCode {
+            instructions: Vec::new(),
+        }
+    }
+}
+
+impl IntermediateCode {
+    fn add_instruction(&mut self, instruction: Instruction) {
+        self.instructions.push(instruction);
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_arithmetic_operations() {
-        let ic = IntermediateCode {
-            instructions: vec![
-                Address {
-                    source_a: AddressType::Var("a".into()),
-                    source_b: AddressType::Var("b".into()),
-                    dest: "t_1".into(),
-                },
-                Address {
-                    source_a: AddressType::Var("c".into()),
-                    source_b: AddressType::Var("d".into()),
-                    dest: "t_2".into(),
-                },
-            ],
-        };
-        let output = format!("{}", ic);
-        let expected = "t_1 = a b\nt_2 = c d\n";
-        assert_eq!(output, expected);
+    fn test_instruction_display() {
+        let instruction = Instruction::new(
+            opt_codes::OptCode::BiOp(
+                opt_codes::BiOptCode::Add,
+                [
+                    AddrType::Var(AssignmentIdentifier::new("a".into(), false)),
+                    AddrType::Var(AssignmentIdentifier::new("b".into(), false)),
+                ],
+            ),
+            "result".into(),
+        );
+
+        assert_eq!(format!("{}", instruction), "result := ADD a + b");
     }
 
     #[test]
-    fn test_empty_instructions() {
-        let ic = IntermediateCode {
-            instructions: vec![],
-        };
-        let output = format!("{}", ic);
-        assert_eq!(output, "");
+    fn test_intermediate_code_display() {
+        let mut code = IntermediateCode::default();
+        let instruction1 = Instruction::new(
+            opt_codes::OptCode::BiOp(
+                opt_codes::BiOptCode::Add,
+                [AddrType::Var("a".into()), AddrType::Var("b".into())],
+            ),
+            "result".into(),
+        );
+        let instruction2 = Instruction::new(
+            opt_codes::OptCode::UniOp(opt_codes::UniOptCode::Negation, [AddrType::Var("c".into())]),
+            "neg_c".into(),
+        );
+        code.add_instruction(instruction1);
+        code.add_instruction(instruction2);
+        assert_eq!(
+            format!("{}", code),
+            "result := ADD a + b\nneg_c := MINUS c\n",
+        );
     }
 }

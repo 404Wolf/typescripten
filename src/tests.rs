@@ -5,8 +5,7 @@ mod tests {
         span::SimpleSpan,
     };
     use codegen::{
-        ast_to_table::{Assignment, ParseError},
-        table::ChainedSymbolTable,
+        ast_to_table::{AssignmentCST, ParseError},
     };
     use logos::Logos;
     use parse::{parse::parser, symbols::*};
@@ -16,7 +15,7 @@ mod tests {
         src: &str,
     ) -> (
         Option<StmtList>,
-        Result<ChainedSymbolTable<Assignment>, ParseError>,
+        Result<AssignmentCST, ParseError>,
     ) {
         let token_iter = Token::lexer(src).spanned().map(|(tok, span)| {
             let span = Into::<SimpleSpan<usize>>::into(span);
@@ -252,8 +251,8 @@ mod tests {
         let chained_symbol_table =
             chained_symbol_table.expect("Chained symbol table should be generated successfully.");
 
-        let assignment_type = chained_symbol_table.get("a").unwrap().type_;
-        assert_eq!(assignment_type, Type::Int);
+        let assignment_type = &chained_symbol_table.get("a").unwrap().type_;
+        assert_eq!(*assignment_type, Type::Int);
 
         let assignment_type = codegen::expr_type::HasType::get_type(
             &Expr::Assign(
@@ -283,9 +282,9 @@ mod tests {
         let chained_symbol_table =
             chained_symbol_table.expect("Chained symbol table should be generated successfully.");
 
-        let assignment_type = chained_symbol_table.get("arr").unwrap().type_;
+        let assignment_type = &chained_symbol_table.get("arr").unwrap().type_;
 
-        assert_eq!(assignment_type, Type::Array(Box::new(Type::Int), Some(10)));
+        assert_eq!(*assignment_type, Type::Array(Box::new(Type::Int), Some(10)));
 
         let index_expr = Expr::Index(
             Box::new(Expr::ID("arr".to_string())),
