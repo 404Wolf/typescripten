@@ -2,12 +2,10 @@ use parse::symbols::Consts;
 
 use crate::ast_to_table::AssignmentIdentifier;
 
-pub type VarType = AssignmentIdentifier;
-
 #[derive(Clone)]
 pub enum AddrType {
     Const(Consts),
-    Var(VarType),
+    Var(AssignmentIdentifier),
 }
 
 impl std::fmt::Display for AddrType {
@@ -64,11 +62,11 @@ struct Instruction {
     /// The operation code to be performed
     pub opt_code: opt_codes::OptCode,
     // The name of a variable where the result is to be stored
-    pub dest_var: VarType,
+    pub dest_var: AssignmentIdentifier,
 }
 
 impl Instruction {
-    fn new(opt_code: opt_codes::OptCode, dest_var: VarType) -> Self {
+    fn new(opt_code: opt_codes::OptCode, dest_var: AssignmentIdentifier) -> Self {
         Instruction { opt_code, dest_var }
     }
 }

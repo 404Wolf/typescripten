@@ -9,9 +9,15 @@ pub enum Type {
     Array(Box<Type>, Option<usize>),
 }
 
-impl Type {
+pub trait Widenable {
+    fn widen(&self, other: &Self) -> Option<Self>
+    where
+        Self: Sized;
+}
+
+impl Widenable for Type {
     /// Returns the widened type if possible, or None if they cannot be widened.
-    pub fn widen(&self, other: &Self) -> Option<Self> {
+    fn widen(&self, other: &Self) -> Option<Self> {
         match (self, other) {
             (Type::Int, Type::Float) => Some(Type::Float),
             (Type::Int, Type::Int) => Some(Type::Int),

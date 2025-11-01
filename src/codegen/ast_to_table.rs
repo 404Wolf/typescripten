@@ -1,4 +1,4 @@
-use parse::symbols::{Expr, Stmt, StmtList, Type};
+use parse::symbols::{Expr, Stmt, StmtList, Type, Widenable};
 
 use crate::{
     expr_type::{GetTypeAtIndexes, HasType},
