@@ -73,6 +73,8 @@ impl SizeOf for Type {
 }
 
 mod tests {
+    use parse::symbols::Widenable;
+
     use super::*;
 
     #[test]
