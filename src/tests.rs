@@ -5,7 +5,7 @@ mod tests {
         input::{Input, Stream},
         span::SimpleSpan,
     };
-    use codegen::ast_to_table::{AssignmentCST, ParseError};
+    use codegen::ast_to_table::{AssignmentCST, ParseError, ReferenceError};
     use logos::Logos;
     use parse::{parse::parser, symbols::*};
 
@@ -289,7 +289,7 @@ mod tests {
         println!("{:?}", chained_symbol_table);
 
         match chained_symbol_table {
-            Err(ParseError::ReferenceError) => {
+            Err(ParseError::ReferenceError(ReferenceError::VariableDoesntExist)) => {
                 // Expected reference error due to undeclared variable
             }
             _ => panic!("Expected a ReferenceError due to undeclared variable."),

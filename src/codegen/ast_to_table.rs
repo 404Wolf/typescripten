@@ -144,12 +144,19 @@ impl AssignmentCST {
 #[derive(Debug, Clone)]
 pub enum TypeError {
     AssignmentTypeMismatch,
+    FailToWidenOrReferenceError,
+}
+
+#[derive(Debug, Clone)]
+pub enum ReferenceError {
+    ArrayOutOfBounds,
+    VariableDoesntExist,
 }
 
 #[derive(Debug, Clone)]
 pub enum ParseError {
     TypeError(TypeError),
-    ReferenceError,
+    ReferenceError(ReferenceError),
 }
 
 impl TryFrom<StmtList> for AssignmentCST {
@@ -177,7 +184,10 @@ impl TryFrom<StmtList> for AssignmentCST {
                                     let rhs_wider = value
                                         .as_ref()
                                         .get_type(chained_symbol_table)
-                                        .ok_or(ParseError::ReferenceError)?;
+                                        .ok_or(ParseError::TypeError(
+                                        // TODO: more specific error (make get_type not return Option)
+                                        TypeError::FailToWidenOrReferenceError,
+                                    ))?;
 
                                     // Table is the active scope
                                     match chained_symbol_table.get(id) {
@@ -215,7 +225,9 @@ impl TryFrom<StmtList> for AssignmentCST {
                                             }
                                         }
                                         None => {
-                                            return Err(ParseError::ReferenceError);
+                                            return Err(ParseError::ReferenceError(
+                                                ReferenceError::VariableDoesntExist,
+                                            ));
                                         }
                                     }
                                 }

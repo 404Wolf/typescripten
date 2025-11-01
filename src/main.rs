@@ -5,6 +5,7 @@ use chumsky::prelude::*;
 use chumsky::span::SimpleSpan;
 use clap::Parser;
 use codegen::ast_to_table::AssignmentCST;
+use codegen::table::ChainedSymbolTable;
 use env_logger::{Builder, Env};
 use logos::Logos;
 use parse::parse::parser;
@@ -59,10 +60,10 @@ fn main() {
         println!("Full parse AST:");
         println!("{:#?}\n", &ast);
 
-        let chained_symbol_table: AssignmentCST = ast.try_into().unwrap();
-
-        println!("Symbol Table:");
-        println!("{:#?}\n", chained_symbol_table);
+        TryInto::<AssignmentCST>::try_into(ast).unwrap_or_else(|e| {
+            eprintln!("Error during symbol table construction: {:?}", e);
+            exit(1);
+        });
     } else {
         errs.into_iter().for_each(|e| {
             Report::build(ReportKind::Error, ((), e.span().into_range()))
