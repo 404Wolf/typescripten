@@ -51,7 +51,7 @@ impl MaybeIndex for Type {
 }
 
 /// Trait for types that can provide their size in bytes.
-trait SizeOf {
+pub trait SizeOf {
     /// Get the size of the Type in bytes.
     fn size_of(&self) -> usize;
 }

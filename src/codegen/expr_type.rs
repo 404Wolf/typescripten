@@ -48,7 +48,7 @@ impl HasType for Expr {
                 // Look up the identifier in the symbol table
                 chained_symbol_table
                     .get(name)
-                    .map(|assignment| assignment.type_.clone())
+                    .map(|assignment| assignment.meta.type_.clone())
             }
             Expr::Const(c) => Some(match c {
                 Consts::Int(_) => Type::Int,
@@ -61,7 +61,7 @@ impl HasType for Expr {
             Expr::Assign(name, _, indexes) => {
                 let var_type = chained_symbol_table
                     .get(name)
-                    .map(|assignment| assignment.type_.clone());
+                    .map(|assignment| assignment.meta.type_.clone());
 
                 match indexes {
                     // Look up the identifier in the symbol table

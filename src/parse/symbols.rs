@@ -1,7 +1,7 @@
 use logos::Logos;
 use std::{collections::LinkedList, fmt};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Type {
     Int,
     Float,
@@ -137,20 +137,20 @@ pub enum Token<'a> {
     Whitespace,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Keywords {
     Break,
     Continue,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Consts {
     Int(f32), // the error handling for narrowing is elsewhere
     Float(f32),
     Boolean(bool),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),

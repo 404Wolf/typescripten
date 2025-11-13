@@ -58,10 +58,7 @@ mod tests {
                         name: "x".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue {
-                        type_: Type::Int,
-                        value: None
-                    }
+                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None)
                 )]
                 .into_iter()
                 .collect()
@@ -96,10 +93,7 @@ mod tests {
                         name: "count".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue {
-                        type_: Type::Int,
-                        value: None
-                    }
+                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None)
                 )]
                 .into_iter()
                 .collect()
@@ -134,10 +128,7 @@ mod tests {
                         name: "num".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue {
-                        type_: Type::Int,
-                        value: None
-                    }
+                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None)
                 )]
                 .into_iter()
                 .collect()
@@ -170,33 +161,30 @@ mod tests {
                             name: "z".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue {
-                            type_: Type::Array(
+                        codegen::ast_to_table::AssignmentValue::new(
+                            Type::Array(
                                 Box::new(Type::Array(Box::new(Type::Int), Some(12))),
                                 Some(2)
                             ),
-                            value: None
-                        }
+                            None
+                        )
                     ),
                     (
                         codegen::ast_to_table::AssignmentIdentifier {
                             name: "y".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue {
-                            type_: Type::Array(Box::new(Type::Float), None),
-                            value: None
-                        }
+                        codegen::ast_to_table::AssignmentValue::new(
+                            Type::Array(Box::new(Type::Float), None),
+                            None
+                        )
                     ),
                     (
                         codegen::ast_to_table::AssignmentIdentifier {
                             name: "x".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue {
-                            type_: Type::Int,
-                            value: None
-                        }
+                        codegen::ast_to_table::AssignmentValue::new(Type::Int, None)
                     )
                 ]
                 .into_iter()
@@ -231,20 +219,17 @@ mod tests {
                             name: "x".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue {
-                            type_: Type::Array(Box::new(Type::Int), Some(5)),
-                            value: None
-                        }
+                        codegen::ast_to_table::AssignmentValue::new(
+                            Type::Array(Box::new(Type::Int), Some(5)),
+                            None
+                        )
                     ),
                     (
                         codegen::ast_to_table::AssignmentIdentifier {
                             name: "y".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue {
-                            type_: Type::Int,
-                            value: None
-                        }
+                        codegen::ast_to_table::AssignmentValue::new(Type::Int, None)
                     )
                 ]
                 .into_iter()
@@ -320,10 +305,7 @@ mod tests {
                         name: "x".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue {
-                        type_: Type::Float,
-                        value: None
-                    },
+                    codegen::ast_to_table::AssignmentValue::new(Type::Float, None),
                 )]
                 .into_iter()
                 .collect(),
@@ -355,10 +337,10 @@ mod tests {
                         name: "arr".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue {
-                        type_: Type::Array(Box::new(Type::Float), Some(5)),
-                        value: None
-                    }
+                    codegen::ast_to_table::AssignmentValue::new(
+                        Type::Array(Box::new(Type::Float), Some(5)),
+                        None
+                    )
                 )]
                 .into_iter()
                 .collect(),
@@ -390,7 +372,7 @@ mod tests {
             .map(|(_, value)| value)
             .expect("Variable 'a' should be in the symbol table log");
 
-        let assignment_type = &assignment_value.type_;
+        let assignment_type = &assignment_value.meta.type_;
         assert_eq!(*assignment_type, Type::Int);
     }
 
@@ -415,7 +397,7 @@ mod tests {
             .map(|(_, value)| value)
             .expect("Variable 'arr' should be in the symbol table log");
 
-        let assignment_type = &assignment_value.type_;
+        let assignment_type = &assignment_value.meta.type_;
 
         assert_eq!(*assignment_type, Type::Array(Box::new(Type::Int), Some(10)));
     }
