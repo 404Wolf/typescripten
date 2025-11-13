@@ -60,7 +60,7 @@ impl SizeOf for Type {
     fn size_of(&self) -> usize {
         match self {
             Type::Int => std::mem::size_of::<i32>(),
-            Type::Float => std::mem::size_of::<f32>(),
+            Type::Float => std::mem::size_of::<f64>(),
             Type::Boolean => std::mem::size_of::<bool>(),
             Type::Array(inner, size) => {
                 match size {
@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn test_basic_types() {
         assert_eq!(Type::Int.size_of(), 4);
-        assert_eq!(Type::Float.size_of(), 4);
+        assert_eq!(Type::Float.size_of(), 8);
         assert_eq!(Type::Boolean.size_of(), 1);
     }
 
