@@ -4,23 +4,29 @@ use std::fmt;
 pub trait Symbol: fmt::Debug + fmt::Display + Clone {}
 impl<T: fmt::Debug + fmt::Display + Clone> Symbol for T {}
 
+pub trait NodeMetadataType: Default + fmt::Debug + Clone + PartialEq + Eq {}
+impl<T: Default + fmt::Debug + Clone + PartialEq + Eq> NodeMetadataType for T {}
+
 pub trait Identifier: fmt::Debug + fmt::Display + std::hash::Hash + Eq + Clone {}
 impl<T: fmt::Debug + fmt::Display + std::hash::Hash + Eq + Clone> Identifier for T {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScopeNode<I, A, K>
 where
     I: Identifier,
     A: Symbol,
-    K: Default,
+    K: NodeMetadataType,
 {
-    pub map: HashMap<I, A>,
+    pub scope_node: HashMap<I, A>,
     pub meta: K,
 }
 
-impl<I: Identifier, A: Symbol, K: Default> ScopeNode<I, A, K> {
+impl<I: Identifier, A: Symbol, K: NodeMetadataType> ScopeNode<I, A, K> {
     pub fn new(map: HashMap<I, A>, meta: K) -> Self {
-        ScopeNode { map, meta }
+        ScopeNode {
+            scope_node: map,
+            meta,
+        }
     }
 
     pub fn meta(&mut self) -> &mut K {
@@ -29,12 +35,12 @@ impl<I: Identifier, A: Symbol, K: Default> ScopeNode<I, A, K> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ChainedSymbolTable<I: Identifier, A: Symbol, K: Default> {
+pub struct ChainedSymbolTable<I: Identifier, A: Symbol, K: NodeMetadataType> {
     parents: Vec<ScopeNode<I, A, K>>,
     pub log: Vec<ScopeNode<I, A, K>>,
 }
 
-impl<I: Identifier, A: Symbol, K: Default> Default for ChainedSymbolTable<I, A, K> {
+impl<I: Identifier, A: Symbol, K: NodeMetadataType> Default for ChainedSymbolTable<I, A, K> {
     fn default() -> Self {
         ChainedSymbolTable {
             parents: vec![ScopeNode::new(HashMap::new(), K::default())],
@@ -43,10 +49,10 @@ impl<I: Identifier, A: Symbol, K: Default> Default for ChainedSymbolTable<I, A, 
     }
 }
 
-impl<I: Identifier, A: Symbol, K: Default> ChainedSymbolTable<I, A, K> {
-    pub fn push_scope(&mut self, _meta: Option<K>) {
+impl<I: Identifier, A: Symbol, K: NodeMetadataType> ChainedSymbolTable<I, A, K> {
+    pub fn push_scope(&mut self, meta: Option<K>) {
         self.parents
-            .push(ScopeNode::new(HashMap::new(), _meta.unwrap_or_default()));
+            .push(ScopeNode::new(HashMap::new(), meta.unwrap_or_default()));
     }
 
     pub fn pop_scope(&mut self) -> Option<ScopeNode<I, A, K>> {
@@ -62,7 +68,7 @@ impl<I: Identifier, A: Symbol, K: Default> ChainedSymbolTable<I, A, K> {
         }
 
         for scope in self.parents.iter().rev() {
-            if let Some(value) = scope.map.get(key) {
+            if let Some(value) = scope.scope_node.get(key) {
                 return Some(value.clone());
             }
         }
@@ -73,7 +79,7 @@ impl<I: Identifier, A: Symbol, K: Default> ChainedSymbolTable<I, A, K> {
     /// Remove a variable from the current scope
     pub fn remove(&mut self, key: &I) -> Option<A> {
         if let Some(current_scope) = self.parents.last_mut() {
-            current_scope.map.remove(key)
+            current_scope.scope_node.remove(key)
         } else {
             None
         }
@@ -82,8 +88,8 @@ impl<I: Identifier, A: Symbol, K: Default> ChainedSymbolTable<I, A, K> {
     /// Search upwards and update the value of the first matching key found
     pub fn update(&mut self, key: &I, value: A) -> Result<(), ()> {
         for scope in self.parents.iter_mut().rev() {
-            if scope.map.contains_key(key) {
-                scope.map.insert(key.clone(), value);
+            if scope.scope_node.contains_key(key) {
+                scope.scope_node.insert(key.clone(), value);
                 return Ok(());
             }
         }
@@ -97,7 +103,7 @@ impl<I: Identifier, A: Symbol, K: Default> ChainedSymbolTable<I, A, K> {
         }
 
         if let Some(current_scope) = self.parents.last_mut() {
-            current_scope.map.insert(key, value);
+            current_scope.scope_node.insert(key, value);
             return true;
         }
 
@@ -108,8 +114,16 @@ impl<I: Identifier, A: Symbol, K: Default> ChainedSymbolTable<I, A, K> {
         self.parents.last()
     }
 
-    pub fn get_current_meta(&mut self) -> Option<&mut K> {
-        self.parents.last_mut().map(|scope| &mut scope.meta)
+    pub fn get_current_scope_mut(&mut self) -> Option<&mut ScopeNode<I, A, K>> {
+        self.parents.last_mut()
+    }
+
+    pub fn get_current_meta(&self) -> Option<&K> {
+        self.get_current_scope().map(|scope| &scope.meta)
+    }
+
+    pub fn get_current_meta_mut(&mut self) -> Option<&mut K> {
+        self.get_current_scope_mut().map(|scope| &mut scope.meta)
     }
 }
 

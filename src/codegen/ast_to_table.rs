@@ -6,6 +6,13 @@ use crate::{
     types::SizeOf,
 };
 
+#[derive(Debug)]
+pub enum Error {
+    AlreadyExists(String),
+    WasNotThere,
+    NoExistingScope,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AssignmentIdentifier {
     pub name: String,
@@ -58,12 +65,12 @@ pub struct AssignmentMeta {
 }
 
 impl AssignmentValue {
-    pub fn new(type_: Type, value: Option<Expr>) -> Self {
+    pub fn new(type_: Type, value: Option<Expr>, address: Option<usize>) -> Self {
         AssignmentValue {
             value,
             meta: AssignmentMeta {
                 type_: type_.clone(),
-                address: 0,
+                address: address.unwrap_or_default(),
             },
         }
     }
@@ -81,16 +88,40 @@ impl GetTypeAtIndexes for AssignmentValue {
     }
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct AssignmentLayerMeta {
+    /// Beginning offset of the current layer. None when the layer is a function (we can't preallocate).
     entry_offset: Option<usize>,
+    /// Latest memory offset within the current layer (the stack counter)
     latest_memory_offset: usize,
 }
 
-#[derive(Debug, Default)]
+impl AssignmentLayerMeta {
+    pub fn new(entry_offset: Option<usize>, latest_memory_offset: usize) -> Self {
+        Self {
+            entry_offset,
+            latest_memory_offset,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct AssignmentCST {
     table: ChainedSymbolTable<AssignmentIdentifier, AssignmentValue, AssignmentLayerMeta>,
     tmp_name_counter: usize,
+}
+
+impl Default for AssignmentCST {
+    fn default() -> Self {
+        Self {
+            table: {
+                let mut table = ChainedSymbolTable::default();
+                table.push_scope(None);
+                table
+            },
+            tmp_name_counter: 0,
+        }
+    }
 }
 
 impl AssignmentCST {
@@ -98,6 +129,12 @@ impl AssignmentCST {
         &self,
     ) -> &ChainedSymbolTable<AssignmentIdentifier, AssignmentValue, AssignmentLayerMeta> {
         &self.table
+    }
+
+    pub fn get_table_mut(
+        &mut self,
+    ) -> &mut ChainedSymbolTable<AssignmentIdentifier, AssignmentValue, AssignmentLayerMeta> {
+        &mut self.table
     }
 
     pub fn get(&self, key: &str) -> Option<AssignmentValue> {
@@ -110,12 +147,12 @@ impl AssignmentCST {
             .get(&AssignmentIdentifier::new(key.to_string(), true))
     }
 
-    pub fn set(&mut self, key: &str, type_: Type, value: Option<Expr>) -> bool {
-        if self.table.get_current_meta().is_none() {
-            return false;
-        }
-
-        let last_offset = self.table.get_current_meta().unwrap().latest_memory_offset;
+    pub fn set(&mut self, key: &str, type_: Type, value: Option<Expr>) -> Result<(), Error> {
+        let last_offset = self
+            .table
+            .get_current_meta_mut()
+            .ok_or(Error::NoExistingScope)?
+            .latest_memory_offset;
 
         // Always update the size, since we may be shadowing. We never directly overwrite.
         self.table.insert(
@@ -123,27 +160,42 @@ impl AssignmentCST {
             AssignmentValue {
                 meta: AssignmentMeta {
                     type_: type_.clone(),
-                    address: last_offset, // TODO: Fake for now
+                    address: last_offset,
                 },
                 value,
             },
         );
 
-        let current_meta = self.table.get_current_meta().unwrap();
+        let current_meta = self.table.get_current_meta_mut().unwrap();
         current_meta.latest_memory_offset += type_.size_of();
 
-        // Clear all temporary variables
-        if let Some(map) = self.table.get_current_scope().cloned() {
-            for (identifier, var) in map.map.iter() {
-                if identifier.is_temp {
-                    let current_meta = self.table.get_current_meta().unwrap();
-                    current_meta.latest_memory_offset -= var.meta.type_.size_of();
-                    self.table.remove(identifier);
+        // We only use temp variables for temp storage during the process of setting a variable.
+        self.clear_temps()?;
+
+        Ok(())
+    }
+
+    pub fn clear_temps(&mut self) -> Result<(), Error> {
+        let mut offset_to_remove = 0;
+
+        for i in 0..self.tmp_name_counter.clone() {
+            let table = self.get_table_mut();
+            let thing_to_remove = &AssignmentIdentifier::new(i.to_string(), true);
+            match table.remove(thing_to_remove) {
+                Some(value) => {
+                    offset_to_remove += value.meta.type_.size_of();
+                    self.tmp_name_counter -= 1;
                 }
+                None => return Err(Error::WasNotThere),
             }
         }
 
-        true
+        self.tmp_name_counter = 0;
+        self.get_current_meta_mut()
+            .ok_or(Error::NoExistingScope)?
+            .latest_memory_offset -= offset_to_remove;
+
+        Ok(())
     }
 
     pub fn update(&mut self, key: &str, value: AssignmentContents) -> bool {
@@ -167,11 +219,15 @@ impl AssignmentCST {
 
     /// Sets a temporary variable in the symbol table.
     /// Returns an error if the temporary variable already exists.
-    pub fn set_tmp(&mut self, key: &str, type_: Type, value: Option<Expr>) -> Result<(), ()> {
+    pub fn set_tmp(&mut self, key: &str, type_: Type, value: Option<Expr>) -> Result<(), Error> {
         let had_temp = self.get_tmp(key).is_some();
-        let latest_memory_offset = self.table.get_current_meta().unwrap().latest_memory_offset;
+        let latest_memory_offset = self
+            .table
+            .get_current_meta()
+            .ok_or(Error::NoExistingScope)?
+            .latest_memory_offset;
 
-        if had_temp {
+        if !had_temp {
             self.table.insert(
                 AssignmentIdentifier::new(key.to_string(), true),
                 AssignmentValue {
@@ -182,46 +238,46 @@ impl AssignmentCST {
                     value,
                 },
             );
+
+            self.table
+                .get_current_meta_mut()
+                .ok_or(Error::NoExistingScope)?
+                .latest_memory_offset += type_.size_of();
+
             Ok(())
         } else {
-            Err(())
+            Err(Error::AlreadyExists(key.to_string()))
         }
     }
 
     /// Adds a new temporary variable to the symbol table and returns its name.
-    pub fn add_tmp(&mut self, type_: Type, value: Option<Expr>) -> String {
-        let tmp_name: String = format!("tmp_{}", self.tmp_name_counter);
+    pub fn add_tmp(&mut self, type_: Type, value: Option<Expr>) -> Result<String, Error> {
+        self.set_tmp(&(self.tmp_name_counter).to_string(), type_, value)?;
         self.tmp_name_counter += 1;
-        self.set_tmp(&tmp_name, type_, value)
-            .expect("We just generated this tmp name, it should not have existed yet");
-        tmp_name
+        Ok((self.tmp_name_counter - 1).to_string())
     }
 
     pub fn push_scope(&mut self) {
-        self.table.push_scope(None);
+        let new_entry_offset = match self.table.get_current_meta() {
+            Some(meta) => meta.latest_memory_offset + meta.entry_offset.unwrap_or(0),
+            None => 0,
+        };
+
+        let new_meta = AssignmentLayerMeta::new(Some(new_entry_offset), 0);
+
+        self.table.push_scope(Some(new_meta));
     }
 
     pub fn pop_scope(&mut self) {
-        // Pop the size of everything that was in that scope.
-
-        let popped_scope = self.table.pop_scope();
-        let current_meta = self.table.get_current_meta();
-
-        match current_meta {
-            None => return,
-            Some(meta) => {
-                if let Some(scope) = popped_scope {
-                    for (_key, val) in scope.map.iter() {
-                        meta.latest_memory_offset -= val.meta.type_.size_of()
-                    }
-                }
-            }
-        };
+        self.table.pop_scope();
     }
 
-    /// Get the meta of the current layer.
-    pub fn get_current_meta(&mut self) -> Option<&mut AssignmentLayerMeta> {
+    pub fn get_current_meta(&self) -> Option<&AssignmentLayerMeta> {
         self.table.get_current_meta()
+    }
+
+    pub fn get_current_meta_mut(&mut self) -> Option<&mut AssignmentLayerMeta> {
+        self.table.get_current_meta_mut()
     }
 }
 
@@ -368,6 +424,21 @@ mod tests {
     }
 
     #[test]
+    fn test_entry_offset_for_second_layer() {
+        let mut cst = AssignmentCST::default();
+
+        // Initial block, add stuff
+        cst.set("var1", Type::Int, Some(Expr::ID("5".into()))); // 0 to 3
+        cst.set("var2", Type::Float, None); // 4 to 11
+
+        // Make new block, check that its entry offset is right after we left off
+        cst.push_scope();
+
+        let current_meta = cst.get_current_meta_mut();
+        assert_eq!(current_meta.unwrap().entry_offset, Some(12));
+    }
+
+    #[test]
     fn test_update_var_address_not_change() {
         let mut cst = AssignmentCST::default();
         cst.set("var1", Type::Int, Some(Expr::ID("5".into()))); // 0 to 3
@@ -383,17 +454,17 @@ mod tests {
         let mut cst = AssignmentCST::default();
 
         cst.set("var1", Type::Int, Some(Expr::ID("5".into()))); // 0 to 3
-        assert!(cst.get_current_meta().unwrap().latest_memory_offset == 4);
+        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 4);
 
         cst.update("var1", Expr::ID("10".into()));
-        assert!(cst.get_current_meta().unwrap().latest_memory_offset == 4); // doesn't update the head of the stack
+        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 4); // doesn't update the head of the stack
 
         cst.set("var1", Type::Int, Some(Expr::ID("15".into()))); // overwrite
-        assert!(cst.get_current_meta().unwrap().latest_memory_offset == 8); // now the stack has moved; shadowing!
+        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 8); // now the stack has moved; shadowing!
 
         cst.update("var1", Expr::ID("20".into())); // overwrite
-        assert!(cst.get_current_meta().unwrap().latest_memory_offset == 8); // doesn't update the head of the stack
-        assert!(cst.get("var1").unwrap().meta.address == 4); // because we shadowed
+        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 8); // doesn't update the head of the stack
+        assert_eq!(cst.get("var1").unwrap().meta.address, 4); // because we shadowed
     }
 
     #[test]
@@ -401,63 +472,37 @@ mod tests {
         let mut cst = AssignmentCST::default();
 
         // Add a temp var, then check that it has it
-        let tmp_name = cst.add_tmp(Type::Int, None);
-        assert_eq!(tmp_name, "tmp_0");
+        let tmp_name = cst.add_tmp(Type::Int, None).unwrap();
+        assert_eq!(tmp_name, "0");
         assert!(cst.get_tmp(&tmp_name).is_some());
-        assert!(cst.get_current_meta().unwrap().latest_memory_offset == 4);
+        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 4);
 
         // Set a regular variable, which should clear the temp var
         cst.set("var1", Type::Int, Some(Expr::ID("10".into())));
         assert!(cst.get_tmp(&tmp_name).is_none());
 
         // And make sure the offset is correct
-        assert!(cst.get_current_meta().unwrap().latest_memory_offset == 0);
+        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 4);
     }
 
     #[test]
     fn test_add_temp_variable() {
         let mut cst = AssignmentCST::default();
-        let tmp_name = cst.add_tmp(Type::Int, None);
+        cst.push_scope();
+        let tmp_name = cst.add_tmp(Type::Int, None).unwrap();
 
-        assert_eq!(tmp_name, "tmp_0");
+        assert_eq!(tmp_name, "0");
         assert!(cst.get_tmp(&tmp_name).is_some());
     }
 
     #[test]
-    fn test_add_two_temp_variables_with_regular_in_between() {
+    fn test_add_reg_var_and_then_temp_var_and_get_temp_var() {
         let mut cst = AssignmentCST::default();
-        let tmp_name1 = cst.add_tmp(Type::Float, None);
+
         cst.set("regular_var", Type::Int, None);
-        let tmp_name2 = cst.add_tmp(Type::Boolean, None);
+        let temp_var_name = cst.add_tmp(Type::Float, None).unwrap();
 
-        assert_eq!(tmp_name1, "tmp_0");
-        assert_eq!(tmp_name2, "tmp_1");
-        assert!(cst.get_tmp(&tmp_name1).is_some());
-        assert!(cst.get_tmp(&tmp_name2).is_some());
-        assert!(cst.get("regular_var").is_some());
-    }
-
-    #[test]
-    fn test_add_temp_var_and_reg_var_and_get_temp_var() {
-        let mut cst = AssignmentCST::default();
-        let temp_var_name = cst.add_tmp(Type::Float, None);
-        cst.set("regular_var", Type::Int, None);
-        let temp_var_name2 = cst.add_tmp(Type::Boolean, None);
-
-        assert_eq!(temp_var_name, "tmp_0");
-        assert_eq!(temp_var_name2, "tmp_1");
-        assert!(cst.get_tmp(&temp_var_name).is_some());
-        assert!(cst.get_tmp(&temp_var_name2).is_some());
-        assert!(cst.get("regular_var").is_some());
-    }
-
-    #[test]
-    fn add_reg_var_and_then_temp_var_and_get_temp_var() {
-        let mut cst = AssignmentCST::default();
-        cst.set("regular_var", Type::Int, None);
-        let temp_var_name = cst.add_tmp(Type::Float, None);
-
-        assert_eq!(temp_var_name, "tmp_0");
+        assert_eq!(temp_var_name, "0");
         assert!(cst.get_tmp(&temp_var_name).is_some());
         assert!(cst.get("regular_var").is_some());
     }
@@ -472,46 +517,74 @@ mod tests {
         let i_type = Type::Array(Box::new(Type::Array(Box::new(Type::Int), Some(7))), Some(5));
         cst.set("i", i_type, None);
         assert_eq!(cst.get("i").unwrap().meta.address, 0);
-        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 140);
+        assert_eq!(
+            cst.get_current_meta().unwrap().latest_memory_offset,
+            7 * 5 * Type::Int.size_of()
+        );
 
         cst.set("j", Type::Int, None); // j at offset 140
-        assert_eq!(cst.get("j").unwrap().meta.address, 140);
-        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 144);
+        assert_eq!(
+            cst.get("j").unwrap().meta.address,
+            7 * 5 * Type::Int.size_of()
+        );
+        assert_eq!(
+            cst.get_current_meta().unwrap().latest_memory_offset,
+            7 * 5 * Type::Int.size_of() + Type::Int.size_of()
+        );
         // First nested scope (b)
         cst.push_scope();
         cst.set("i", Type::Int, None); // shadows outer i
-        assert_eq!(cst.get("i").unwrap().meta.address, 144);
-        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 148);
+        assert_eq!(cst.get("i").unwrap().meta.address, 0);
+        assert_eq!(
+            cst.get_current_meta().unwrap().latest_memory_offset,
+            Type::Int.size_of()
+        );
 
         // i[3][3]: array of 3 elements, each element is array of 3 ints
         let top_type_b = Type::Array(Box::new(Type::Array(Box::new(Type::Int), Some(3))), Some(3));
         cst.set("top", top_type_b, None);
-        assert_eq!(cst.get("top").unwrap().meta.address, 148);
+        assert_eq!(cst.get("top").unwrap().meta.address, Type::Int.size_of());
         assert_eq!(
             cst.get_current_meta().unwrap().latest_memory_offset,
-            148 + 36
+            Type::Int.size_of() + 3 * 3 * Type::Int.size_of()
         ); // 3 * 3 * 4 = 36
 
         // Pop first nested scope
         cst.pop_scope();
-        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 144); // Back to before scope (b)
+        assert_eq!(
+            cst.get_current_meta().unwrap().latest_memory_offset,
+            7 * 5 * Type::Int.size_of() + Type::Int.size_of()
+        ); // Back to before scope (b)
 
         // Second nested scope (c)
         cst.push_scope();
         cst.set("k", Type::Int, None);
-        assert_eq!(cst.get("k").unwrap().meta.address, 144);
-        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 148);
+        assert_eq!(cst.get("k").unwrap().meta.address, 0);
+        assert_eq!(
+            cst.get_current_meta().unwrap().latest_memory_offset,
+            Type::Int.size_of()
+        );
 
         cst.set("top", Type::Int, None);
-        assert_eq!(cst.get("top").unwrap().meta.address, 148);
-        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 152);
+        assert_eq!(cst.get("top").unwrap().meta.address, Type::Int.size_of());
+        assert_eq!(
+            cst.get_current_meta().unwrap().latest_memory_offset,
+            Type::Int.size_of() + Type::Int.size_of()
+        );
 
         // Pop second nested scope
         cst.pop_scope();
-        assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 144); // Back to before scope (c)
+        assert_eq!(
+            cst.get_current_meta().unwrap().latest_memory_offset,
+            7 * 5 * Type::Int.size_of() + Type::Int.size_of()
+        ); // Back to before scope (c)
+    }
 
-        // Verify outer scope variables are still accessible
-        assert_eq!(cst.get("j").unwrap().meta.address, 140);
-        assert_eq!(cst.get("i").unwrap().meta.address, 0); // Original i, not the shadowed ones
+    #[test]
+    fn test_clear_temps_short() {
+        let mut cst = AssignmentCST::default();
+        cst.add_tmp(Type::Int, None).unwrap();
+        cst.clear_temps();
+        assert_eq!(cst.get_tmp("0"), None)
     }
 }

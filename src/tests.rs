@@ -50,7 +50,10 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 std::collections::HashMap::new(),
                 vec![(
@@ -58,7 +61,7 @@ mod tests {
                         name: "x".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None)
+                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None, Some(0))
                 )]
                 .into_iter()
                 .collect()
@@ -85,7 +88,10 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 std::collections::HashMap::new(),
                 vec![(
@@ -93,7 +99,7 @@ mod tests {
                         name: "count".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None)
+                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None, Some(0))
                 )]
                 .into_iter()
                 .collect()
@@ -120,7 +126,10 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 std::collections::HashMap::new(),
                 vec![(
@@ -128,7 +137,7 @@ mod tests {
                         name: "num".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None)
+                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None, Some(0))
                 )]
                 .into_iter()
                 .collect()
@@ -153,7 +162,10 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 vec![
                     (
@@ -166,7 +178,8 @@ mod tests {
                                 Box::new(Type::Array(Box::new(Type::Int), Some(12))),
                                 Some(2)
                             ),
-                            None
+                            None,
+                            Some(12)
                         )
                     ),
                     (
@@ -176,7 +189,8 @@ mod tests {
                         },
                         codegen::ast_to_table::AssignmentValue::new(
                             Type::Array(Box::new(Type::Float), None),
-                            None
+                            None,
+                            Some(4)
                         )
                     ),
                     (
@@ -184,7 +198,7 @@ mod tests {
                             name: "x".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue::new(Type::Int, None)
+                        codegen::ast_to_table::AssignmentValue::new(Type::Int, None, Some(0))
                     )
                 ]
                 .into_iter()
@@ -211,7 +225,10 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 vec![
                     (
@@ -221,7 +238,8 @@ mod tests {
                         },
                         codegen::ast_to_table::AssignmentValue::new(
                             Type::Array(Box::new(Type::Int), Some(5)),
-                            None
+                            None,
+                            Some(0)
                         )
                     ),
                     (
@@ -229,13 +247,12 @@ mod tests {
                             name: "y".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue::new(Type::Int, None)
+                        codegen::ast_to_table::AssignmentValue::new(Type::Int, None, Some(20))
                     )
                 ]
                 .into_iter()
                 .collect()
             ],
-            "Variables should be in the symbol table with correct structure."
         );
     }
 
@@ -298,14 +315,17 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 vec![(
                     codegen::ast_to_table::AssignmentIdentifier {
                         name: "x".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue::new(Type::Float, None),
+                    codegen::ast_to_table::AssignmentValue::new(Type::Float, None, Some(0)),
                 )]
                 .into_iter()
                 .collect(),
@@ -330,7 +350,10 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 vec![(
                     codegen::ast_to_table::AssignmentIdentifier {
@@ -339,7 +362,8 @@ mod tests {
                     },
                     codegen::ast_to_table::AssignmentValue::new(
                         Type::Array(Box::new(Type::Float), Some(5)),
-                        None
+                        None,
+                        Some(0)
                     )
                 )]
                 .into_iter()
@@ -367,7 +391,7 @@ mod tests {
             .get_table()
             .log
             .iter()
-            .flat_map(|scope| scope.iter())
+            .flat_map(|scope| scope.scope_node.iter())
             .find(|(id, _)| id.name == "a")
             .map(|(_, value)| value)
             .expect("Variable 'a' should be in the symbol table log");
@@ -392,7 +416,7 @@ mod tests {
             .get_table()
             .log
             .iter()
-            .flat_map(|scope| scope.iter())
+            .flat_map(|scope| scope.scope_node.iter())
             .find(|(id, _)| id.name == "arr")
             .map(|(_, value)| value)
             .expect("Variable 'arr' should be in the symbol table log");

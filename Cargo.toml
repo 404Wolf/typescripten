@@ -20,7 +20,6 @@ name = "compiler"
 version = "0.1.0"
 edition = "2024"
 
-
 [workspace]
 members = [".", "src/parse", "src/codegen", "src/compile"]
 resolver = "2"
