@@ -5,7 +5,10 @@ mod tests {
         input::{Input, Stream},
         span::SimpleSpan,
     };
-    use codegen::ast_to_table::{AssignmentCST, ParseError, ReferenceError};
+    use codegen::{
+        ast_to_table::{AssignmentCST, ParseError, ReferenceError},
+        process::get_chained_symbol_table_and_intermediate,
+    };
     use logos::Logos;
     use parse::{parse::parser, symbols::*};
 
@@ -23,10 +26,12 @@ mod tests {
 
         let (ast, _) = parser().parse(token_stream).into_output_errors();
 
-        let chained_symbol_table = ast
-            .clone()
-            .expect("AST should be generated successfully.")
-            .try_into();
+        let chained_symbol_table = match &ast {
+            Some(ast) => get_chained_symbol_table_and_intermediate(ast).map(|(cst, _)| cst),
+            None => Err(ParseError::ReferenceError(
+                ReferenceError::VariableDoesntExist,
+            )),
+        };
 
         (ast, chained_symbol_table)
     }

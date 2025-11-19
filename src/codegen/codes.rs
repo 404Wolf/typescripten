@@ -1,4 +1,4 @@
-use parse::symbols::Consts;
+use parse::symbols::{Consts, StmtList};
 
 use crate::ast_to_table::AssignmentIdentifier;
 
@@ -77,7 +77,7 @@ impl std::fmt::Display for Instruction {
     }
 }
 
-struct IntermediateCode {
+pub struct IntermediateCode {
     pub instructions: Vec<Instruction>,
 }
 
@@ -149,7 +149,7 @@ mod tests {
     #[test]
     fn test_three_address_code_construction() {
         use parse::symbols::Consts;
-        
+
         // Create intermediate code that mimics the example from the textbook:
         // Expression: c + a[i][j]
         // Three-address code:
@@ -158,9 +158,9 @@ mod tests {
         // t3 = t1 + t2
         // t4 = a [ t3 ]
         // t5 = c + t4
-        
+
         let mut code = IntermediateCode::default();
-        
+
         // t1 = i * 12
         let t1_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
@@ -172,7 +172,7 @@ mod tests {
             ),
             AssignmentIdentifier::new("t1".into(), true),
         );
-        
+
         // t2 = j * 4
         let t2_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
@@ -184,7 +184,7 @@ mod tests {
             ),
             AssignmentIdentifier::new("t2".into(), true),
         );
-        
+
         // t3 = t1 + t2
         let t3_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
@@ -196,7 +196,7 @@ mod tests {
             ),
             AssignmentIdentifier::new("t3".into(), true),
         );
-        
+
         // Note: For array indexing (a[t3]), we would need additional instruction types
         // For now, we'll simulate with a placeholder variable for the array access result
         // t4 = a (simulating array access result)
@@ -210,7 +210,7 @@ mod tests {
             ),
             AssignmentIdentifier::new("t4".into(), true),
         );
-        
+
         // t5 = c + t4
         let t5_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
@@ -222,39 +222,54 @@ mod tests {
             ),
             AssignmentIdentifier::new("t5".into(), true),
         );
-        
+
         // Add all instructions to the intermediate code
         code.add_instruction(t1_instruction);
         code.add_instruction(t2_instruction);
         code.add_instruction(t3_instruction);
         code.add_instruction(t4_instruction);
         code.add_instruction(t5_instruction);
-        
+
         // Expected output
         let expected = "tmp_[t1] := MUL i * Int(12.0)\n\
                        tmp_[t2] := MUL j * Int(4.0)\n\
                        tmp_[t3] := ADD tmp_[t1] + tmp_[t2]\n\
                        tmp_[t4] := ADD a + tmp_[t3]\n\
                        tmp_[t5] := ADD c + tmp_[t4]\n";
-        
+
         // Assert that the generated code matches expected
         let actual = format!("{}", code);
         println!("Generated three-address code:");
         println!("{}", actual);
-        
+
         assert_eq!(actual, expected);
-        
+
         // Additional assertions on individual instructions
         assert_eq!(code.instructions.len(), 5);
-        
+
         // Test that temporary variables are properly formatted
-        assert_eq!(format!("{}", AssignmentIdentifier::new("t1".into(), true)), "tmp_[t1]");
-        assert_eq!(format!("{}", AssignmentIdentifier::new("regular".into(), false)), "regular");
-        
+        assert_eq!(
+            format!("{}", AssignmentIdentifier::new("t1".into(), true)),
+            "tmp_[t1]"
+        );
+        assert_eq!(
+            format!("{}", AssignmentIdentifier::new("regular".into(), false)),
+            "regular"
+        );
+
         // Test that constants are properly formatted
-        assert_eq!(format!("{}", AddrType::Const(Consts::Int(12.0))), "Int(12.0)");
-        assert_eq!(format!("{}", AddrType::Const(Consts::Float(3.14))), "Float(3.14)");
-        assert_eq!(format!("{}", AddrType::Const(Consts::Boolean(true))), "Boolean(true)");
+        assert_eq!(
+            format!("{}", AddrType::Const(Consts::Int(12.0))),
+            "Int(12.0)"
+        );
+        assert_eq!(
+            format!("{}", AddrType::Const(Consts::Float(3.14))),
+            "Float(3.14)"
+        );
+        assert_eq!(
+            format!("{}", AddrType::Const(Consts::Boolean(true))),
+            "Boolean(true)"
+        );
     }
 
     #[test]
@@ -262,11 +277,11 @@ mod tests {
         // Test a more complex expression: (a + b) * (c - d)
         // This would generate:
         // t1 = a + b
-        // t2 = c - d  
+        // t2 = c - d
         // t3 = t1 * t2
-        
+
         let mut code = IntermediateCode::default();
-        
+
         // t1 = a + b
         let t1_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
@@ -278,7 +293,7 @@ mod tests {
             ),
             AssignmentIdentifier::new("t1".into(), true),
         );
-        
+
         // t2 = c - d
         let t2_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
@@ -290,7 +305,7 @@ mod tests {
             ),
             AssignmentIdentifier::new("t2".into(), true),
         );
-        
+
         // t3 = t1 * t2
         let t3_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
@@ -302,19 +317,19 @@ mod tests {
             ),
             AssignmentIdentifier::new("t3".into(), true),
         );
-        
+
         code.add_instruction(t1_instruction);
         code.add_instruction(t2_instruction);
         code.add_instruction(t3_instruction);
-        
+
         let expected = "tmp_[t1] := ADD a + b\n\
                        tmp_[t2] := SUB c - d\n\
                        tmp_[t3] := MUL tmp_[t1] * tmp_[t2]\n";
-        
+
         let actual = format!("{}", code);
         println!("Complex arithmetic expression code:");
         println!("{}", actual);
-        
+
         assert_eq!(actual, expected);
         assert_eq!(code.instructions.len(), 3);
     }

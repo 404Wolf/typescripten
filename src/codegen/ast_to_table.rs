@@ -257,6 +257,12 @@ impl AssignmentCST {
         Ok((self.tmp_name_counter - 1).to_string())
     }
 
+    /// Like push scope, but for function activation frames. The entry_offset is None since function frame location is not well defined at compile time.
+    pub fn push_frame(&mut self) {
+        let new_meta = AssignmentLayerMeta::new(None, 0);
+        self.table.push_scope(Some(new_meta));
+    }
+
     pub fn push_scope(&mut self) {
         let new_entry_offset = match self.table.get_current_meta() {
             Some(meta) => meta.latest_memory_offset + meta.entry_offset.unwrap_or(0),
@@ -299,115 +305,6 @@ pub enum ParseError {
     ReferenceError(ReferenceError),
 }
 
-impl TryFrom<StmtList> for AssignmentCST {
-    type Error = ParseError;
-
-    fn try_from(stmt_list: StmtList) -> Result<Self, Self::Error> {
-        let mut chained_symbol_table = AssignmentCST::default();
-
-        match stmt_list {
-            StmtList::Stmt(stmts) => {
-                fn process_stmt(
-                    stmt: &Stmt,
-                    chained_symbol_table: &mut AssignmentCST,
-                ) -> Result<(), ParseError> {
-                    match stmt {
-                        Stmt::Expr(expr) => {
-                            match expr.as_ref() {
-                                Expr::Declare(types, id) => {
-                                    chained_symbol_table.set(id, types.clone(), None);
-                                    Ok(())
-                                }
-                                Expr::Assign(id, value, indexes) => {
-                                    // assigning value into id `id[...indexes] = <value>`
-                                    // Ignore indexing for now
-                                    let rhs_wider = value
-                                        .as_ref()
-                                        .get_type(chained_symbol_table)
-                                        .ok_or(ParseError::TypeError(
-                                        // TODO: more specific error (make get_type not return Option)
-                                        TypeError::FailToWidenOrReferenceError,
-                                    ))?;
-
-                                    // Table is the active scope
-                                    match chained_symbol_table.get(id) {
-                                        Some(lhs_narrower) => {
-                                            // Get the value of id at the current scope
-
-                                            let lhs_type = &lhs_narrower
-                                                .get_type_at_indexes(match indexes {
-                                                    Some(idx) => idx.len(),
-                                                    _ => 0,
-                                                })
-                                                .ok_or(ParseError::TypeError(
-                                                    TypeError::AssignmentTypeMismatch,
-                                                ))?;
-
-                                            // Auto widen the type of the key-val
-                                            // relation to be the widest of
-                                            // expression
-                                            let widened_type = rhs_wider.widen(lhs_type).ok_or(
-                                                ParseError::TypeError(
-                                                    TypeError::AssignmentTypeMismatch,
-                                                ),
-                                            )?;
-
-                                            // Make sure that widened_type is the
-                                            // same as the assignment type (you
-                                            // can't assign to something that is
-                                            // smaller)
-                                            if *lhs_type != widened_type {
-                                                return Err(ParseError::TypeError(
-                                                    TypeError::AssignmentTypeMismatch,
-                                                ));
-                                            } else {
-                                                Ok(())
-                                            }
-                                        }
-                                        None => {
-                                            return Err(ParseError::ReferenceError(
-                                                ReferenceError::VariableDoesntExist,
-                                            ));
-                                        }
-                                    }
-                                }
-                                _ => Ok(()),
-                            }
-                        }
-                        Stmt::Block(block_stmts) => {
-                            // Push a new scope for the block
-                            chained_symbol_table.push_scope();
-
-                            // Process all statements in the block
-                            for stmt in block_stmts {
-                                process_stmt(stmt, chained_symbol_table)?;
-                            }
-
-                            // Pop the scope when exiting the block
-                            chained_symbol_table.pop_scope();
-
-                            Ok(())
-                        }
-                        // TODO! not parsing else statements
-                        Stmt::If(_, stmt, _el) => process_stmt(stmt.as_ref(), chained_symbol_table),
-                        Stmt::While(_, stmt, _el) => {
-                            process_stmt(stmt.as_ref(), chained_symbol_table)
-                        }
-                        Stmt::DoWhile(_, stmt) => process_stmt(stmt.as_ref(), chained_symbol_table),
-                    }
-                }
-
-                for stmt in &stmts {
-                    process_stmt(stmt, &mut chained_symbol_table)?;
-                }
-            }
-        }
-
-        chained_symbol_table.pop_scope();
-        Ok(chained_symbol_table)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -415,8 +312,9 @@ mod tests {
     #[test]
     fn test_assign_var_address_increment() {
         let mut cst = AssignmentCST::default();
-        cst.set("var1", Type::Int, Some(Expr::ID("5".into()))); // 0 to 3
-        cst.set("var2", Type::Float, None); // 4 to 11
+        cst.set("var1", Type::Int, Some(Expr::ID("5".into())))
+            .unwrap(); // 0 to 3
+        cst.set("var2", Type::Float, None).unwrap(); // 4 to 11
         let var2 = cst.get("var2").unwrap();
 
         assert_eq!(cst.get("var1").unwrap().meta.address, 0);
@@ -428,8 +326,9 @@ mod tests {
         let mut cst = AssignmentCST::default();
 
         // Initial block, add stuff
-        cst.set("var1", Type::Int, Some(Expr::ID("5".into()))); // 0 to 3
-        cst.set("var2", Type::Float, None); // 4 to 11
+        cst.set("var1", Type::Int, Some(Expr::ID("5".into())))
+            .unwrap(); // 0 to 3
+        cst.set("var2", Type::Float, None).unwrap(); // 4 to 11
 
         // Make new block, check that its entry offset is right after we left off
         cst.push_scope();
@@ -441,7 +340,8 @@ mod tests {
     #[test]
     fn test_update_var_address_not_change() {
         let mut cst = AssignmentCST::default();
-        cst.set("var1", Type::Int, Some(Expr::ID("5".into()))); // 0 to 3
+        cst.set("var1", Type::Int, Some(Expr::ID("5".into())))
+            .unwrap(); // 0 to 3
         cst.update("var1", Expr::ID("10".into()));
         let var1 = cst.get("var1").unwrap();
 
@@ -453,13 +353,15 @@ mod tests {
     fn test_set_then_update_then_set_then_update() {
         let mut cst = AssignmentCST::default();
 
-        cst.set("var1", Type::Int, Some(Expr::ID("5".into()))); // 0 to 3
+        cst.set("var1", Type::Int, Some(Expr::ID("5".into())))
+            .unwrap(); // 0 to 3
         assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 4);
 
         cst.update("var1", Expr::ID("10".into()));
         assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 4); // doesn't update the head of the stack
 
-        cst.set("var1", Type::Int, Some(Expr::ID("15".into()))); // overwrite
+        cst.set("var1", Type::Int, Some(Expr::ID("15".into())))
+            .unwrap(); // overwrite
         assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 8); // now the stack has moved; shadowing!
 
         cst.update("var1", Expr::ID("20".into())); // overwrite
@@ -478,7 +380,8 @@ mod tests {
         assert_eq!(cst.get_current_meta().unwrap().latest_memory_offset, 4);
 
         // Set a regular variable, which should clear the temp var
-        cst.set("var1", Type::Int, Some(Expr::ID("10".into())));
+        cst.set("var1", Type::Int, Some(Expr::ID("10".into())))
+            .unwrap();
         assert!(cst.get_tmp(&tmp_name).is_none());
 
         // And make sure the offset is correct
@@ -499,7 +402,7 @@ mod tests {
     fn test_add_reg_var_and_then_temp_var_and_get_temp_var() {
         let mut cst = AssignmentCST::default();
 
-        cst.set("regular_var", Type::Int, None);
+        cst.set("regular_var", Type::Int, None).unwrap();
         let temp_var_name = cst.add_tmp(Type::Float, None).unwrap();
 
         assert_eq!(temp_var_name, "0");
@@ -515,14 +418,14 @@ mod tests {
         // i[5][7]: array of 5 elements, each element is array of 7 ints
         // Size: 5 * 7 * 4 = 140 bytes (assuming 4-byte ints)
         let i_type = Type::Array(Box::new(Type::Array(Box::new(Type::Int), Some(7))), Some(5));
-        cst.set("i", i_type, None);
+        cst.set("i", i_type, None).unwrap();
         assert_eq!(cst.get("i").unwrap().meta.address, 0);
         assert_eq!(
             cst.get_current_meta().unwrap().latest_memory_offset,
             7 * 5 * Type::Int.size_of()
         );
 
-        cst.set("j", Type::Int, None); // j at offset 140
+        cst.set("j", Type::Int, None).unwrap(); // j at offset 140
         assert_eq!(
             cst.get("j").unwrap().meta.address,
             7 * 5 * Type::Int.size_of()
@@ -533,7 +436,7 @@ mod tests {
         );
         // First nested scope (b)
         cst.push_scope();
-        cst.set("i", Type::Int, None); // shadows outer i
+        cst.set("i", Type::Int, None).unwrap(); // shadows outer i
         assert_eq!(cst.get("i").unwrap().meta.address, 0);
         assert_eq!(
             cst.get_current_meta().unwrap().latest_memory_offset,
@@ -542,7 +445,7 @@ mod tests {
 
         // i[3][3]: array of 3 elements, each element is array of 3 ints
         let top_type_b = Type::Array(Box::new(Type::Array(Box::new(Type::Int), Some(3))), Some(3));
-        cst.set("top", top_type_b, None);
+        cst.set("top", top_type_b, None).unwrap();
         assert_eq!(cst.get("top").unwrap().meta.address, Type::Int.size_of());
         assert_eq!(
             cst.get_current_meta().unwrap().latest_memory_offset,
@@ -558,14 +461,14 @@ mod tests {
 
         // Second nested scope (c)
         cst.push_scope();
-        cst.set("k", Type::Int, None);
+        cst.set("k", Type::Int, None).unwrap();
         assert_eq!(cst.get("k").unwrap().meta.address, 0);
         assert_eq!(
             cst.get_current_meta().unwrap().latest_memory_offset,
             Type::Int.size_of()
         );
 
-        cst.set("top", Type::Int, None);
+        cst.set("top", Type::Int, None).unwrap();
         assert_eq!(cst.get("top").unwrap().meta.address, Type::Int.size_of());
         assert_eq!(
             cst.get_current_meta().unwrap().latest_memory_offset,
@@ -584,7 +487,24 @@ mod tests {
     fn test_clear_temps_short() {
         let mut cst = AssignmentCST::default();
         cst.add_tmp(Type::Int, None).unwrap();
-        cst.clear_temps();
+        cst.clear_temps().unwrap();
         assert_eq!(cst.get_tmp("0"), None)
+    }
+
+    #[test]
+    fn test_push_frame() {
+        let mut cst = AssignmentCST::default();
+
+        cst.push_frame();
+        assert_eq!(cst.get_current_meta().unwrap().entry_offset, None);
+        // Add a variable to the current frame level
+        cst.set("var_in_frame", Type::Int, None).unwrap();
+        assert_eq!(cst.get("var_in_frame").unwrap().meta.address, 0);
+
+        cst.push_frame();
+        assert_eq!(cst.get_current_meta().unwrap().entry_offset, None);
+        // Add a variable to the new frame level (also starts at 0 since it's a frame)
+        cst.set("var_in_inner_frame", Type::Int, None).unwrap();
+        assert_eq!(cst.get("var_in_inner_frame").unwrap().meta.address, 0);
     }
 }
