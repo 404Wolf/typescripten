@@ -6,7 +6,7 @@ mod tests {
         span::SimpleSpan,
     };
     use codegen::{
-        ast_to_table::{AssignmentCST, ParseError, ReferenceError},
+        ast_to_table::{AssignmentCST, CSTError, ReferenceError},
         process::get_chained_symbol_table_and_intermediate,
     };
     use logos::Logos;
@@ -15,7 +15,7 @@ mod tests {
     #[allow(dead_code)]
     fn get_ast_and_chained_symbol_table(
         src: &str,
-    ) -> (Option<StmtList>, Result<AssignmentCST, ParseError>) {
+    ) -> (Option<StmtList>, Result<AssignmentCST, CSTError>) {
         let token_iter = Token::lexer(src).spanned().map(|(tok, span)| {
             let span = Into::<SimpleSpan<usize>>::into(span);
             (tok.unwrap(), span)
@@ -28,7 +28,7 @@ mod tests {
 
         let chained_symbol_table = match &ast {
             Some(ast) => get_chained_symbol_table_and_intermediate(ast).map(|(cst, _)| cst),
-            None => Err(ParseError::ReferenceError(
+            None => Err(CSTError::ReferenceError(
                 ReferenceError::VariableDoesntExist,
             )),
         };
@@ -275,7 +275,7 @@ mod tests {
         println!("{:?}", ast.unwrap());
 
         match chained_symbol_table {
-            Err(ParseError::TypeError(_)) => {
+            Err(CSTError::TypeError(_)) => {
                 // Expected type error due to assignment type mismatch
             }
             _ => panic!("Expected a TypeError due to assignment type mismatch."),
@@ -296,7 +296,7 @@ mod tests {
         println!("{:?}", chained_symbol_table);
 
         match chained_symbol_table {
-            Err(ParseError::ReferenceError(ReferenceError::VariableDoesntExist)) => {
+            Err(CSTError::ReferenceError(ReferenceError::VariableDoesntExist)) => {
                 // Expected reference error due to undeclared variable
             }
             _ => panic!("Expected a ReferenceError due to undeclared variable."),

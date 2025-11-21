@@ -1,4 +1,4 @@
-use parse::symbols::{Consts, StmtList};
+use parse::symbols::Consts;
 
 use crate::ast_to_table::AssignmentIdentifier;
 
@@ -17,8 +17,8 @@ impl std::fmt::Display for AddrType {
     }
 }
 
-mod opt_codes {
-    use crate::{ast_to_table::AssignmentValue, codes::AddrType};
+pub mod opt_codes {
+    use crate::codes::AddrType;
 
     #[derive(Clone)]
     pub enum BiOptCode {
@@ -57,7 +57,7 @@ mod opt_codes {
 }
 
 #[derive(Clone)]
-struct Instruction {
+pub struct Instruction {
     // also known as "address"
     /// The operation code to be performed
     pub opt_code: opt_codes::OptCode,
@@ -99,7 +99,7 @@ impl Default for IntermediateCode {
 }
 
 impl IntermediateCode {
-    fn add_instruction(&mut self, instruction: Instruction) {
+    pub fn add_instruction(&mut self, instruction: Instruction) {
         self.instructions.push(instruction);
     }
 }

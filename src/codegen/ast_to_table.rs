@@ -1,16 +1,31 @@
-use parse::symbols::{Expr, Stmt, StmtList, Type, Widenable};
+use parse::symbols::{Expr, Type};
 
-use crate::{
-    expr_type::{GetTypeAtIndexes, HasType},
-    table::ChainedSymbolTable,
-    types::SizeOf,
-};
+use crate::{expr_type::GetTypeAtIndexes, table::ChainedSymbolTable, types::SizeOf};
 
-#[derive(Debug)]
-pub enum Error {
+#[derive(Debug, Clone)]
+pub enum ProcessingError {
     AlreadyExists(String),
     WasNotThere,
     NoExistingScope,
+}
+
+#[derive(Debug, Clone)]
+pub enum TypeError {
+    AssignmentTypeMismatch,
+    FailToWidenOrReferenceError,
+}
+
+#[derive(Debug, Clone)]
+pub enum ReferenceError {
+    ArrayOutOfBounds,
+    VariableDoesntExist,
+}
+
+#[derive(Debug, Clone)]
+pub enum CSTError {
+    TypeError(TypeError),
+    ReferenceError(ReferenceError),
+    CSTError(ProcessingError),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -147,11 +162,16 @@ impl AssignmentCST {
             .get(&AssignmentIdentifier::new(key.to_string(), true))
     }
 
-    pub fn set(&mut self, key: &str, type_: Type, value: Option<Expr>) -> Result<(), Error> {
+    pub fn set(
+        &mut self,
+        key: &str,
+        type_: Type,
+        value: Option<Expr>,
+    ) -> Result<(), ProcessingError> {
         let last_offset = self
             .table
             .get_current_meta_mut()
-            .ok_or(Error::NoExistingScope)?
+            .ok_or(ProcessingError::NoExistingScope)?
             .latest_memory_offset;
 
         // Always update the size, since we may be shadowing. We never directly overwrite.
@@ -175,7 +195,7 @@ impl AssignmentCST {
         Ok(())
     }
 
-    pub fn clear_temps(&mut self) -> Result<(), Error> {
+    pub fn clear_temps(&mut self) -> Result<(), ProcessingError> {
         let mut offset_to_remove = 0;
 
         for i in 0..self.tmp_name_counter.clone() {
@@ -186,13 +206,13 @@ impl AssignmentCST {
                     offset_to_remove += value.meta.type_.size_of();
                     self.tmp_name_counter -= 1;
                 }
-                None => return Err(Error::WasNotThere),
+                None => return Err(ProcessingError::WasNotThere),
             }
         }
 
         self.tmp_name_counter = 0;
         self.get_current_meta_mut()
-            .ok_or(Error::NoExistingScope)?
+            .ok_or(ProcessingError::NoExistingScope)?
             .latest_memory_offset -= offset_to_remove;
 
         Ok(())
@@ -219,12 +239,17 @@ impl AssignmentCST {
 
     /// Sets a temporary variable in the symbol table.
     /// Returns an error if the temporary variable already exists.
-    pub fn set_tmp(&mut self, key: &str, type_: Type, value: Option<Expr>) -> Result<(), Error> {
+    pub fn set_tmp(
+        &mut self,
+        key: &str,
+        type_: Type,
+        value: Option<Expr>,
+    ) -> Result<(), ProcessingError> {
         let had_temp = self.get_tmp(key).is_some();
         let latest_memory_offset = self
             .table
             .get_current_meta()
-            .ok_or(Error::NoExistingScope)?
+            .ok_or(ProcessingError::NoExistingScope)?
             .latest_memory_offset;
 
         if !had_temp {
@@ -241,17 +266,17 @@ impl AssignmentCST {
 
             self.table
                 .get_current_meta_mut()
-                .ok_or(Error::NoExistingScope)?
+                .ok_or(ProcessingError::NoExistingScope)?
                 .latest_memory_offset += type_.size_of();
 
             Ok(())
         } else {
-            Err(Error::AlreadyExists(key.to_string()))
+            Err(ProcessingError::AlreadyExists(key.to_string()))
         }
     }
 
     /// Adds a new temporary variable to the symbol table and returns its name.
-    pub fn add_tmp(&mut self, type_: Type, value: Option<Expr>) -> Result<String, Error> {
+    pub fn add_tmp(&mut self, type_: Type, value: Option<Expr>) -> Result<String, ProcessingError> {
         self.set_tmp(&(self.tmp_name_counter).to_string(), type_, value)?;
         self.tmp_name_counter += 1;
         Ok((self.tmp_name_counter - 1).to_string())
@@ -286,25 +311,6 @@ impl AssignmentCST {
         self.table.get_current_meta_mut()
     }
 }
-
-#[derive(Debug, Clone)]
-pub enum TypeError {
-    AssignmentTypeMismatch,
-    FailToWidenOrReferenceError,
-}
-
-#[derive(Debug, Clone)]
-pub enum ReferenceError {
-    ArrayOutOfBounds,
-    VariableDoesntExist,
-}
-
-#[derive(Debug, Clone)]
-pub enum ParseError {
-    TypeError(TypeError),
-    ReferenceError(ReferenceError),
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
