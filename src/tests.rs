@@ -18,22 +18,35 @@ mod tests {
     ) -> (Option<StmtList>, Result<AssignmentCST, CSTError>) {
         let token_iter = Token::lexer(src).spanned().map(|(tok, span)| {
             let span = Into::<SimpleSpan<usize>>::into(span);
-            (tok.unwrap(), span)
+            match tok {
+                Ok(tok) => (tok, span),
+                Err(()) => (Token::Error, span),
+            }
         });
 
         let token_stream =
             Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
 
-        let (ast, _) = parser().parse(token_stream).into_output_errors();
+        let (ast, _errs) = parser().parse(token_stream).into_output_errors();
 
-        let chained_symbol_table = match &ast {
-            Some(ast) => get_chained_symbol_table_and_intermediate(ast).map(|(cst, _)| cst),
-            None => Err(CSTError::ReferenceError(
-                ReferenceError::VariableDoesntExist,
-            )),
-        };
+        if let Some(ref ast) = ast {
+            let chained_symbol_table = get_chained_symbol_table_and_intermediate(ast)
+                .map(|(cst, _)| cst)
+                .map_err(|e| e);
 
-        (ast, chained_symbol_table)
+            (
+                Some(ast.clone()),
+                chained_symbol_table
+                    .map_err(|_| CSTError::ReferenceError(ReferenceError::VariableDoesntExist)),
+            )
+        } else {
+            (
+                None,
+                Err(CSTError::ReferenceError(
+                    ReferenceError::VariableDoesntExist,
+                )),
+            )
+        }
     }
 
     #[test]

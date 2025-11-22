@@ -143,7 +143,7 @@ pub enum Keywords {
     Continue,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Copy)]
 pub enum Consts {
     Int(f32), // the error handling for narrowing is elsewhere
     Float(f32),

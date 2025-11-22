@@ -1,72 +1,126 @@
-use parse::symbols::Consts;
+use parse::symbols::{Consts, Type};
 
 use crate::ast_to_table::AssignmentIdentifier;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum AddrType {
     Const(Consts),
-    Var(AssignmentIdentifier),
+    Var {
+        id: AssignmentIdentifier,
+        address: usize,
+        type_: Type,
+    },
 }
 
 impl std::fmt::Display for AddrType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AddrType::Const(c) => write!(f, "{:?}", c),
-            AddrType::Var(v) => write!(f, "{}", v),
+            AddrType::Var { id, address, type_ } => {
+                write!(f, "{} @ 0x{:x} ({})", id, address, type_)
+            }
         }
     }
 }
 
 pub mod opt_codes {
+    use parse::symbols::Expr;
+
     use crate::codes::AddrType;
 
-    #[derive(Clone)]
-    pub enum BiOptCode {
+    #[derive(Clone, Debug)]
+    pub enum BiOpCode {
         Add,
         Subtract,
         Divide,
         Multiply,
     }
 
-    #[derive(Clone)]
-    pub enum UniOptCode {
-        Negation,
+    pub enum Error {
+        NotBiOp,
     }
 
-    #[derive(Clone)]
+    impl TryFrom<&Expr> for BiOpCode {
+        type Error = Error;
+
+        fn try_from(value: &Expr) -> Result<Self, Self::Error> {
+            BiOpCode::try_from_expr_ref(value)
+        }
+    }
+
+    impl TryFrom<Expr> for BiOpCode {
+        type Error = Error;
+
+        fn try_from(value: Expr) -> Result<Self, Self::Error> {
+            BiOpCode::try_from_expr_ref(&value)
+        }
+    }
+
+    impl BiOpCode {
+        fn try_from_expr_ref(value: &Expr) -> Result<Self, Error> {
+            match value {
+                Expr::Add(_, _) => Ok(BiOpCode::Add),
+                Expr::Sub(_, _) => Ok(BiOpCode::Subtract),
+                Expr::Mul(_, _) => Ok(BiOpCode::Multiply),
+                Expr::Div(_, _) => Ok(BiOpCode::Divide),
+                _ => Err(Error::NotBiOp),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub enum UniOpCode {
+        Negation,
+        Assign,
+    }
+
+    #[derive(Clone, Debug)]
+    /// A regular op code that takes zero operands
+    pub enum ZOpCode {
+        NoOp,
+        Declare,
+    }
+
+    #[derive(Clone, Debug)]
     pub enum OptCode {
-        BiOp(BiOptCode, [AddrType; 2]),
-        UniOp(UniOptCode, [AddrType; 1]),
+        BiOp(BiOpCode, [AddrType; 2]),
+        UniOp(UniOpCode, [AddrType; 1]),
+        ZOp(ZOpCode),
     }
 
     impl std::fmt::Display for OptCode {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
                 OptCode::BiOp(op, [a, b]) => match op {
-                    BiOptCode::Add => write!(f, "ADD {} + {}", a, b),
-                    BiOptCode::Subtract => write!(f, "SUB {} - {}", a, b),
-                    BiOptCode::Multiply => write!(f, "MUL {} * {}", a, b),
-                    BiOptCode::Divide => write!(f, "DIV {} / {}", a, b),
+                    BiOpCode::Add => write!(f, "ADD {} + {}", a, b),
+                    BiOpCode::Subtract => write!(f, "SUB {} - {}", a, b),
+                    BiOpCode::Multiply => write!(f, "MUL {} * {}", a, b),
+                    BiOpCode::Divide => write!(f, "DIV {} / {}", a, b),
                 },
                 OptCode::UniOp(op, [a]) => match op {
-                    UniOptCode::Negation => write!(f, "MINUS {}", a),
+                    UniOpCode::Negation => write!(f, "MINUS {}", a),
+                    UniOpCode::Assign => write!(f, "ASSIGN {}", a),
+                },
+                OptCode::ZOp(op) => match op {
+                    ZOpCode::NoOp => write!(f, "NOOP"),
+                    ZOpCode::Declare => write!(f, "DECLARE"),
                 },
             }
         }
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Instruction {
     // also known as "address"
     /// The operation code to be performed
     pub opt_code: opt_codes::OptCode,
     // The name of a variable where the result is to be stored
-    pub dest_var: AssignmentIdentifier,
+    pub dest_var: AddrType,
 }
 
 impl Instruction {
-    fn new(opt_code: opt_codes::OptCode, dest_var: AssignmentIdentifier) -> Self {
+    fn new(opt_code: opt_codes::OptCode, dest_var: AddrType) -> Self {
         Instruction { opt_code, dest_var }
     }
 }
@@ -77,6 +131,7 @@ impl std::fmt::Display for Instruction {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct IntermediateCode {
     pub instructions: Vec<Instruction>,
 }
@@ -102,6 +157,10 @@ impl IntermediateCode {
     pub fn add_instruction(&mut self, instruction: Instruction) {
         self.instructions.push(instruction);
     }
+
+    pub fn last_instruction(&self) -> Option<&Instruction> {
+        self.instructions.last()
+    }
 }
 
 #[cfg(test)]
@@ -112,7 +171,7 @@ mod tests {
     fn test_instruction_display() {
         let instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
-                opt_codes::BiOptCode::Add,
+                opt_codes::BiOpCode::Add,
                 [
                     AddrType::Var(AssignmentIdentifier::new("a".into(), false)),
                     AddrType::Var(AssignmentIdentifier::new("b".into(), false)),
@@ -129,13 +188,13 @@ mod tests {
         let mut code = IntermediateCode::default();
         let instruction1 = Instruction::new(
             opt_codes::OptCode::BiOp(
-                opt_codes::BiOptCode::Add,
+                opt_codes::BiOpCode::Add,
                 [AddrType::Var("a".into()), AddrType::Var("b".into())],
             ),
             "result".into(),
         );
         let instruction2 = Instruction::new(
-            opt_codes::OptCode::UniOp(opt_codes::UniOptCode::Negation, [AddrType::Var("c".into())]),
+            opt_codes::OptCode::UniOp(opt_codes::UniOpCode::Negation, [AddrType::Var("c".into())]),
             "neg_c".into(),
         );
         code.add_instruction(instruction1);
@@ -164,7 +223,7 @@ mod tests {
         // t1 = i * 12
         let t1_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
-                opt_codes::BiOptCode::Multiply,
+                opt_codes::BiOpCode::Multiply,
                 [
                     AddrType::Var(AssignmentIdentifier::new("i".into(), false)),
                     AddrType::Const(Consts::Int(12.0)),
@@ -176,7 +235,7 @@ mod tests {
         // t2 = j * 4
         let t2_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
-                opt_codes::BiOptCode::Multiply,
+                opt_codes::BiOpCode::Multiply,
                 [
                     AddrType::Var(AssignmentIdentifier::new("j".into(), false)),
                     AddrType::Const(Consts::Int(4.0)),
@@ -188,7 +247,7 @@ mod tests {
         // t3 = t1 + t2
         let t3_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
-                opt_codes::BiOptCode::Add,
+                opt_codes::BiOpCode::Add,
                 [
                     AddrType::Var(AssignmentIdentifier::new("t1".into(), true)),
                     AddrType::Var(AssignmentIdentifier::new("t2".into(), true)),
@@ -202,7 +261,7 @@ mod tests {
         // t4 = a (simulating array access result)
         let t4_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
-                opt_codes::BiOptCode::Add,
+                opt_codes::BiOpCode::Add,
                 [
                     AddrType::Var(AssignmentIdentifier::new("a".into(), false)),
                     AddrType::Var(AssignmentIdentifier::new("t3".into(), true)),
@@ -214,7 +273,7 @@ mod tests {
         // t5 = c + t4
         let t5_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
-                opt_codes::BiOptCode::Add,
+                opt_codes::BiOpCode::Add,
                 [
                     AddrType::Var(AssignmentIdentifier::new("c".into(), false)),
                     AddrType::Var(AssignmentIdentifier::new("t4".into(), true)),
@@ -285,7 +344,7 @@ mod tests {
         // t1 = a + b
         let t1_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
-                opt_codes::BiOptCode::Add,
+                opt_codes::BiOpCode::Add,
                 [
                     AddrType::Var(AssignmentIdentifier::new("a".into(), false)),
                     AddrType::Var(AssignmentIdentifier::new("b".into(), false)),
@@ -297,7 +356,7 @@ mod tests {
         // t2 = c - d
         let t2_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
-                opt_codes::BiOptCode::Subtract,
+                opt_codes::BiOpCode::Subtract,
                 [
                     AddrType::Var(AssignmentIdentifier::new("c".into(), false)),
                     AddrType::Var(AssignmentIdentifier::new("d".into(), false)),
@@ -309,7 +368,7 @@ mod tests {
         // t3 = t1 * t2
         let t3_instruction = Instruction::new(
             opt_codes::OptCode::BiOp(
-                opt_codes::BiOptCode::Multiply,
+                opt_codes::BiOpCode::Multiply,
                 [
                     AddrType::Var(AssignmentIdentifier::new("t1".into(), true)),
                     AddrType::Var(AssignmentIdentifier::new("t2".into(), true)),
