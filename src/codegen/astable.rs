@@ -12,6 +12,7 @@ pub enum ProcessingError {
 #[derive(Debug, Clone)]
 pub enum TypeError {
     AssignmentTypeMismatch,
+    CouldntComputeOffset,
     FailToWidenOrReferenceError,
 }
 

@@ -1,8 +1,8 @@
+use crate::{codes::opt_codes::OpCode, types::MaybeIndex};
 use parse::symbols::{Consts, Expr, Stmt, StmtList, Type, Widenable};
-use crate::types::MaybeIndex;
 
 use crate::{
-    ast_to_table::{AssignmentCST, AssignmentIdentifier, CSTError, ReferenceError, TypeError},
+    astable::{AssignmentCST, AssignmentIdentifier, CSTError, ReferenceError, TypeError},
     codes::{AddrType, Instruction, IntermediateCode, opt_codes},
     expr_type::{GetTypeAtIndexes, HasType},
 };
@@ -87,7 +87,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                 };
 
                 let instruction = Instruction {
-                    opt_code: opt_codes::OptCode::ZOp(opt_codes::ZOpCode::Declare),
+                    opt_code: opt_codes::OpCode::ZOp(opt_codes::ZOpCode::Declare),
                     dest_var: dest_var.clone(),
                 };
                 intermediate_code.add_instruction(instruction);
@@ -122,8 +122,6 @@ pub fn get_chained_symbol_table_and_intermediate(
                         TypeError::AssignmentTypeMismatch,
                     )))?;
 
-                let ptr_offset = Type::get_ptr_to_idx_type();
-
                 // Auto widen the type of the key-val
                 // relation to be the widest of
                 // expression
@@ -144,18 +142,78 @@ pub fn get_chained_symbol_table_and_intermediate(
                 let eval_rhs =
                     process_expr(value.as_ref(), chained_symbol_table, intermediate_code)?;
 
-                let dest_var = AddrType::Var {
-                    id: AssignmentIdentifier::new(id.clone(), false),
-                    address: lhs_narrower_addr,
-                    type_: widened_type,
-                };
+                match indexes {
+                    Some(ptr_offset) => {
+                        // It is an array
+                        let dest_addr_ptr = Type::get_ptr_to_expr(lhs_type, ptr_offset.as_slice())
+                            .map(|offset_expr| {
+                                // address to where the number that we need to assign to is located, must be dereferenced
+                                process_expr(
+                                    &Expr::Add(
+                                        Box::new(offset_expr),
+                                        Box::new(Expr::Const(Consts::Int(
+                                            lhs_narrower_addr as f32,
+                                        ))),
+                                    ),
+                                    chained_symbol_table,
+                                    intermediate_code,
+                                )
+                            })
+                            .transpose()?
+                            .unwrap_or(AddrType::Const(Consts::Int(0.0)));
 
-                intermediate_code.add_instruction(Instruction {
-                    opt_code: opt_codes::OptCode::UniOp(opt_codes::UniOpCode::Assign, [eval_rhs]),
-                    dest_var: dest_var.clone() + ,
-                });
+                        let type_at_index_pos = lhs_narrower
+                            .get_type_at_indexes(ptr_offset.len())
+                            .ok_or(ProcessError::CSTError(CSTError::TypeError(
+                                TypeError::AssignmentTypeMismatch,
+                            )))?;
 
-                Ok(dest_var)
+                        let dest_addr_ptr_addr = match dest_addr_ptr.address() {
+                            Some(addr) => addr,
+                            None => {
+                                // Make a temp var if it was a const
+                                let (_tmp_var_name, tmp_var_addr) =
+                                    chained_symbol_table.add_tmp(Type::Int, None).map_err(
+                                        |err| ProcessError::CSTError(CSTError::CSTError(err)),
+                                    )?;
+                                tmp_var_addr
+                            }
+                        };
+
+                        let dest_addr_ptr = AddrType::Var {
+                            id: AssignmentIdentifier::new(id.clone(), true),
+                            address: dest_addr_ptr_addr,
+                            type_: type_at_index_pos,
+                        };
+
+                        intermediate_code.add_instruction(Instruction {
+                            opt_code: opt_codes::OpCode::UniOp(
+                                opt_codes::UniOpCode::CopyTo,
+                                [eval_rhs],
+                            ),
+                            dest_var: dest_addr_ptr.clone(),
+                        });
+
+                        Ok(dest_addr_ptr)
+                    }
+                    None => {
+                        let dest_var = AddrType::Var {
+                            id: AssignmentIdentifier::new(id.clone(), false),
+                            address: lhs_narrower_addr,
+                            type_: widened_type,
+                        };
+
+                        intermediate_code.add_instruction(Instruction {
+                            opt_code: opt_codes::OpCode::UniOp(
+                                opt_codes::UniOpCode::Assign,
+                                [eval_rhs],
+                            ),
+                            dest_var: dest_var.clone(), // No array indexing
+                        });
+
+                        Ok(dest_var)
+                    }
+                }
             }
             Expr::ID(id) => {
                 let (var, var_addr) =
@@ -206,7 +264,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                 };
 
                 let new_instruction = Instruction {
-                    opt_code: opt_codes::OptCode::BiOp(
+                    opt_code: opt_codes::OpCode::BiOp(
                         expr.try_into().map_err(|_| {
                             ProcessError::CSTError(CSTError::TypeError(
                                 TypeError::FailToWidenOrReferenceError,

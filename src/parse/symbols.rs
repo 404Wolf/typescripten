@@ -150,6 +150,12 @@ pub enum Consts {
     Boolean(bool),
 }
 
+impl Default for Consts {
+    fn default() -> Self {
+        Consts::Int(0.0)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Add(Box<Expr>, Box<Expr>),

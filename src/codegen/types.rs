@@ -1,7 +1,8 @@
-use parse::symbols::Type;
+use parse::symbols::{Consts, Expr, Type};
 
 pub trait MaybeIndex {
     fn get_ptr_to_idx_type(array_type: &Type, index: &[usize]) -> Option<usize>;
+    fn get_ptr_to_expr(array_type: &Type, index_list: &[Expr]) -> Option<Expr>;
     fn get_arr_dim_list(array_type: &Type) -> (Option<Vec<usize>>, Type);
 }
 
@@ -46,6 +47,36 @@ impl MaybeIndex for Type {
             (Some(dims), current_type.clone())
         } else {
             (None, array_type.clone())
+        }
+    }
+
+    fn get_ptr_to_expr(array_type: &Type, index_list: &[Expr]) -> Option<Expr> {
+        // int[5][5] a; -> [X_0 ... X_24 X_25]
+        // a[1][3] -> 5 * 1 + 3 = 8
+        match Type::get_arr_dim_list(array_type) {
+            (Some(dim_list), inner_type) => {
+                Some(Expr::Mul(
+                    Box::new(dim_list.iter().enumerate().fold(
+                        Expr::Const(Consts::default()),
+                        |acc, (i, _dim_size)| {
+                            Expr::Add(
+                                Box::new(Expr::Mul(
+                                    Box::new(acc),
+                                    Box::new(Expr::Const(Consts::default())), // Should be dim_size as Expr
+                                )),
+                                Box::new(
+                                    index_list
+                                        .get(i)
+                                        .unwrap_or(&Expr::Const(Consts::default()))
+                                        .clone(),
+                                ),
+                            )
+                        },
+                    )),
+                    Box::new(Expr::Const(Consts::Int(inner_type.size_of() as f32))),
+                ))
+            }
+            _ => None,
         }
     }
 }
@@ -115,5 +146,33 @@ mod tests {
         let t2 = Type::Int;
         let widened = t1.widen(&t2);
         assert_eq!(widened, Some(Type::Int));
+    }
+
+    #[test]
+    fn test_widen_into_expr() {
+        let t1 = Type::Int;
+        let t2 = Type::Float;
+        let widened = t1.widen(&t2);
+        assert_eq!(widened, Some(Type::Float));
+    }
+
+    #[test]
+    fn test_get_arr_idx_for_expr() {
+        let array_type = Type::Array(Box::new(Type::Int), Some(10));
+        let index_list = vec![Expr::ID("y".into())];
+        let ptr_expr = Type::get_ptr_to_expr(&array_type, &index_list).unwrap();
+        assert_eq!(
+            ptr_expr,
+            Expr::Mul(
+                Box::new(Expr::Add(
+                    Box::new(Expr::Mul(
+                        Box::new(Expr::Const(Consts::Int(0.0))),
+                        Box::new(Expr::Const(Consts::Int(0.0)))
+                    )),
+                    Box::new(Expr::ID("y".into()))
+                )),
+                Box::new(Expr::Const(Consts::Int(4.0)))
+            )
+        );
     }
 }

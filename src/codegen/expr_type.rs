@@ -1,6 +1,6 @@
 use parse::symbols::{Consts, Expr, Type, Widenable};
 
-use crate::ast_to_table::AssignmentCST;
+use crate::astable::AssignmentCST;
 
 pub trait HasType {
     fn get_type(&self, chained_symbol_table: &AssignmentCST) -> Option<Type>;

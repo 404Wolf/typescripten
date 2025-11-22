@@ -6,7 +6,7 @@ mod tests {
         span::SimpleSpan,
     };
     use codegen::{
-        ast_to_table::{AssignmentCST, CSTError, ReferenceError},
+        astable::{AssignmentCST, CSTError, ReferenceError},
         process::get_chained_symbol_table_and_intermediate,
     };
     use logos::Logos;
@@ -75,11 +75,11 @@ mod tests {
             vec![
                 std::collections::HashMap::new(),
                 vec![(
-                    codegen::ast_to_table::AssignmentIdentifier {
+                    codegen::astable::AssignmentIdentifier {
                         name: "x".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None, Some(0))
+                    codegen::astable::AssignmentValue::new(Type::Int, None, Some(0))
                 )]
                 .into_iter()
                 .collect()
@@ -113,11 +113,11 @@ mod tests {
             vec![
                 std::collections::HashMap::new(),
                 vec![(
-                    codegen::ast_to_table::AssignmentIdentifier {
+                    codegen::astable::AssignmentIdentifier {
                         name: "count".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None, Some(0))
+                    codegen::astable::AssignmentValue::new(Type::Int, None, Some(0))
                 )]
                 .into_iter()
                 .collect()
@@ -151,11 +151,11 @@ mod tests {
             vec![
                 std::collections::HashMap::new(),
                 vec![(
-                    codegen::ast_to_table::AssignmentIdentifier {
+                    codegen::astable::AssignmentIdentifier {
                         name: "num".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue::new(Type::Int, None, Some(0))
+                    codegen::astable::AssignmentValue::new(Type::Int, None, Some(0))
                 )]
                 .into_iter()
                 .collect()
@@ -187,11 +187,11 @@ mod tests {
             vec![
                 vec![
                     (
-                        codegen::ast_to_table::AssignmentIdentifier {
+                        codegen::astable::AssignmentIdentifier {
                             name: "z".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue::new(
+                        codegen::astable::AssignmentValue::new(
                             Type::Array(
                                 Box::new(Type::Array(Box::new(Type::Int), Some(12))),
                                 Some(2)
@@ -201,22 +201,22 @@ mod tests {
                         )
                     ),
                     (
-                        codegen::ast_to_table::AssignmentIdentifier {
+                        codegen::astable::AssignmentIdentifier {
                             name: "y".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue::new(
+                        codegen::astable::AssignmentValue::new(
                             Type::Array(Box::new(Type::Float), None),
                             None,
                             Some(4)
                         )
                     ),
                     (
-                        codegen::ast_to_table::AssignmentIdentifier {
+                        codegen::astable::AssignmentIdentifier {
                             name: "x".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue::new(Type::Int, None, Some(0))
+                        codegen::astable::AssignmentValue::new(Type::Int, None, Some(0))
                     )
                 ]
                 .into_iter()
@@ -250,22 +250,22 @@ mod tests {
             vec![
                 vec![
                     (
-                        codegen::ast_to_table::AssignmentIdentifier {
+                        codegen::astable::AssignmentIdentifier {
                             name: "x".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue::new(
+                        codegen::astable::AssignmentValue::new(
                             Type::Array(Box::new(Type::Int), Some(5)),
                             None,
                             Some(0)
                         )
                     ),
                     (
-                        codegen::ast_to_table::AssignmentIdentifier {
+                        codegen::astable::AssignmentIdentifier {
                             name: "y".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue::new(Type::Int, None, Some(20))
+                        codegen::astable::AssignmentValue::new(Type::Int, None, Some(20))
                     )
                 ]
                 .into_iter()
@@ -339,11 +339,11 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 vec![(
-                    codegen::ast_to_table::AssignmentIdentifier {
+                    codegen::astable::AssignmentIdentifier {
                         name: "x".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue::new(Type::Float, None, Some(0)),
+                    codegen::astable::AssignmentValue::new(Type::Float, None, Some(0)),
                 )]
                 .into_iter()
                 .collect(),
@@ -374,11 +374,11 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 vec![(
-                    codegen::ast_to_table::AssignmentIdentifier {
+                    codegen::astable::AssignmentIdentifier {
                         name: "arr".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue::new(
+                    codegen::astable::AssignmentValue::new(
                         Type::Array(Box::new(Type::Float), Some(5)),
                         None,
                         Some(0)
