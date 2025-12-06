@@ -67,13 +67,13 @@ impl MaybeIndex for Type {
                                 Box::new(
                                     index_list
                                         .get(i)
-                                        .unwrap_or(&Expr::Const(Consts::default()))
+                                        .unwrap_or(&Expr::Const(Consts::Int(0)))
                                         .clone(),
                                 ),
                             )
                         },
                     )),
-                    Box::new(Expr::Const(Consts::Int(inner_type.size_of() as f32))),
+                    Box::new(Expr::Const(Consts::Int(inner_type.size_of() as i128))),
                 ))
             }
             _ => None,
@@ -166,12 +166,12 @@ mod tests {
             Expr::Mul(
                 Box::new(Expr::Add(
                     Box::new(Expr::Mul(
-                        Box::new(Expr::Const(Consts::Int(0.0))),
-                        Box::new(Expr::Const(Consts::Int(0.0)))
+                        Box::new(Expr::Const(Consts::Int(0))),
+                        Box::new(Expr::Const(Consts::Int(0)))
                     )),
                     Box::new(Expr::ID("y".into()))
                 )),
-                Box::new(Expr::Const(Consts::Int(4.0)))
+                Box::new(Expr::Const(Consts::Int(4)))
             )
         );
     }

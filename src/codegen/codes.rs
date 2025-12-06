@@ -292,7 +292,7 @@ mod tests {
                         address: 0,
                         type_: Type::Int,
                     },
-                    AddrType::Const(Consts::Int(12.0)),
+                    AddrType::Const(Consts::Int(12)),
                 ],
             ),
             AddrType::Var {
@@ -312,7 +312,7 @@ mod tests {
                         address: 0,
                         type_: Type::Int,
                     },
-                    AddrType::Const(Consts::Int(4.0)),
+                    AddrType::Const(Consts::Int(4)),
                 ],
             ),
             AddrType::Var {
@@ -431,10 +431,7 @@ mod tests {
         );
 
         // Test that constants are properly formatted
-        assert_eq!(
-            format!("{}", AddrType::Const(Consts::Int(12.0))),
-            "Int(12.0)"
-        );
+        assert_eq!(format!("{}", AddrType::Const(Consts::Int(12))), "Int(12.0)");
         assert_eq!(
             format!("{}", AddrType::Const(Consts::Float(3.14))),
             "Float(3.14)"

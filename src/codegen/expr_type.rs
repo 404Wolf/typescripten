@@ -86,6 +86,8 @@ impl HasType for Expr {
                     _ => None,
                 }
             }
+            Expr::Shl(a, _b) => a.get_type(chained_symbol_table),
+            Expr::Shr(a, _b) => a.get_type(chained_symbol_table),
         }
     }
 }

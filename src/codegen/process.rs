@@ -1,4 +1,4 @@
-use crate::{codes::opt_codes::OpCode, types::MaybeIndex};
+use crate::{codes::opt_codes::OpCode, optimize::Optimize, types::MaybeIndex};
 use parse::symbols::{Consts, Expr, Stmt, StmtList, Type, Widenable};
 
 use crate::{
@@ -27,8 +27,6 @@ pub fn get_chained_symbol_table_and_intermediate(
 ) -> Result<(AssignmentCST, IntermediateCode), ProcessError> {
     let mut chained_symbol_table = AssignmentCST::default();
     let mut intermediate_code = IntermediateCode::default();
-
-    let mut tmp_counter = 0;
 
     fn process_stmt(
         stmt: &Stmt,
@@ -74,6 +72,8 @@ pub fn get_chained_symbol_table_and_intermediate(
         chained_symbol_table: &mut AssignmentCST,
         intermediate_code: &mut IntermediateCode,
     ) -> Result<AddrType, ProcessError> {
+        let expr = &expr.optimize(&(|expr| expr.clone()));
+
         match expr {
             Expr::Declare(types, id) => {
                 let addr = chained_symbol_table
@@ -152,7 +152,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                                     &Expr::Add(
                                         Box::new(offset_expr),
                                         Box::new(Expr::Const(Consts::Int(
-                                            lhs_narrower_addr as f32,
+                                            lhs_narrower_addr as i128,
                                         ))),
                                     ),
                                     chained_symbol_table,
@@ -160,7 +160,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                                 )
                             })
                             .transpose()?
-                            .unwrap_or(AddrType::Const(Consts::Int(0.0)));
+                            .unwrap_or(AddrType::Const(Consts::Int(0)));
 
                         let type_at_index_pos = lhs_narrower
                             .get_type_at_indexes(ptr_offset.len())

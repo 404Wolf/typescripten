@@ -145,14 +145,14 @@ pub enum Keywords {
 
 #[derive(Clone, Debug, PartialEq, Copy)]
 pub enum Consts {
-    Int(f32), // the error handling for narrowing is elsewhere
+    Int(i128), // the error handling for narrowing is elsewhere
     Float(f32),
     Boolean(bool),
 }
 
 impl Default for Consts {
     fn default() -> Self {
-        Consts::Int(0.0)
+        Consts::Int(0)
     }
 }
 
@@ -162,6 +162,8 @@ pub enum Expr {
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
     Div(Box<Expr>, Box<Expr>),
+    Shl(Box<Expr>, Box<Expr>),
+    Shr(Box<Expr>, Box<Expr>),
     Not(Box<Expr>),
     Eql(Box<Expr>, Box<Expr>),
     NEq(Box<Expr>, Box<Expr>),
@@ -289,6 +291,8 @@ impl fmt::Display for Expr {
             Expr::Declare(types, _) => write!(f, "{} id", types),
             Expr::Group(expr) => write!(f, "( {} )", expr.as_ref()),
             Expr::Keyword(keyword) => write!(f, "{}", keyword),
+            Expr::Shl(lhs, rhs) => write!(f, "{} << {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::Shr(lhs, rhs) => write!(f, "{} >> {}", lhs.as_ref(), rhs.as_ref()),
         }
     }
 }
