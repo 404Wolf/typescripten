@@ -373,6 +373,30 @@ pub fn get_chained_symbol_table_and_intermediate(
                 })
             }
             Expr::Const(c) => Ok(AddrType::Const(c.clone())),
+            Expr::Not(a) => {
+                let type_of_a = a.get_type(chained_symbol_table).unwrap();
+
+                let (tmp_var_name, tmp_var_addr) = chained_symbol_table
+                    .add_tmp(type_of_a.clone(), None)
+                    .map_err(|err| ProcessError::CSTError(CSTError::CSTError(err)))?;
+
+                let processed_a = process_expr(a, chained_symbol_table, intermediate_code, prev_label, post_label)?;
+
+                let dest_var = AddrType::Var {
+                    id: AssignmentIdentifier::new(tmp_var_name.clone(), false),
+                    address: tmp_var_addr,
+                    type_: type_of_a,
+                };
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::UniOp(
+                        opt_codes::UniOpCode::Negation, [processed_a]
+                    ),
+                    dest_var.clone(),
+                ));
+
+                Ok(dest_var)
+            },
             Expr::Add(a, b)
             | Expr::Sub(a, b)
             | Expr::Div(a, b)
