@@ -1,10 +1,20 @@
 use parse::symbols::{Consts, Type};
 
-use crate::astable::AssignmentIdentifier;
+use crate::{astable::AssignmentIdentifier, codes::opt_codes::UniOpCode};
+
+// code
+// code
+// (address)var1 <- (opcode)Add(1, 2)
+// (address)label1 <- (opcode)Label()
+// code
+// Burn <- (opcode)Goto(label1)
+// (address)label2 <- (opcode)Label()
 
 #[derive(Clone, Debug)]
 pub enum AddrType {
+    Label(usize),
     Const(Consts),
+    Effect,
     Var {
         id: AssignmentIdentifier,
         address: usize,
@@ -14,7 +24,9 @@ pub enum AddrType {
 impl AddrType {
     pub fn address(&self) -> Option<usize> {
         match self {
+            AddrType::Label(_) => None,
             AddrType::Const(_) => None,
+            AddrType::Effect => None,
             AddrType::Var { address, .. } => Some(*address),
         }
     }
@@ -23,7 +35,9 @@ impl AddrType {
 impl std::fmt::Display for AddrType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            AddrType::Label(l) => write!(f, "Label({})", l),
             AddrType::Const(c) => write!(f, "{:?}", c),
+            AddrType::Effect => write!(f, "Effect"),
             AddrType::Var { id, address, type_ } => {
                 write!(f, "{} @ 0x{:x} ({})", id, address, type_)
             }
@@ -42,6 +56,8 @@ pub mod opt_codes {
         Subtract,
         Divide,
         Multiply,
+        /// Two addrs, first is the condition (variable or const), second is the jump target (a label).
+        JumpIf,
     }
 
     impl BiOpCode {
@@ -66,6 +82,8 @@ pub mod opt_codes {
         CopyFrom,
         /// Copies the input value to the address stored at the address of the destination.
         CopyTo,
+        /// Jumps jump to a spot
+        Jump,
     }
 
     #[derive(Clone, Debug)]
@@ -73,6 +91,8 @@ pub mod opt_codes {
     pub enum ZOpCode {
         NoOp,
         Declare,
+        // Labels are a spot
+        Label,
     }
 
     #[derive(Clone, Debug)]
@@ -116,10 +136,12 @@ pub mod opt_codes {
                     UniOpCode::Assign => write!(f, "ASSIGN {}", a),
                     UniOpCode::CopyTo => write!(f, "COPY-TO[*{}]", a),
                     UniOpCode::CopyFrom => write!(f, "COPY-FROM[{}]", a),
+                    UniOpCode::Jump => write!(f, "JUMP {}", a),
                 },
                 OpCode::ZOp(op) => match op {
                     ZOpCode::NoOp => write!(f, "NOOP"),
                     ZOpCode::Declare => write!(f, "DECLARE"),
+                    ZOpCode::Label => write!(f, "LABEL"),
                 },
             }
         }
@@ -136,7 +158,7 @@ pub struct Instruction {
 }
 
 impl Instruction {
-    fn new(opt_code: opt_codes::OpCode, dest_var: AddrType) -> Self {
+    pub fn new(opt_code: opt_codes::OpCode, dest_var: AddrType) -> Self {
         Instruction { opt_code, dest_var }
     }
 }
@@ -150,6 +172,7 @@ impl std::fmt::Display for Instruction {
 #[derive(Clone, Debug)]
 pub struct IntermediateCode {
     pub instructions: Vec<Instruction>,
+    label_counter: usize,
 }
 
 impl std::fmt::Display for IntermediateCode {
@@ -165,6 +188,7 @@ impl Default for IntermediateCode {
     fn default() -> Self {
         IntermediateCode {
             instructions: Vec::new(),
+            label_counter: 0,
         }
     }
 }
@@ -176,6 +200,11 @@ impl IntermediateCode {
 
     pub fn last_instruction(&self) -> Option<&Instruction> {
         self.instructions.last()
+    }
+
+    pub fn alloc_label(&mut self) -> AddrType {
+        self.label_counter += 1;
+        AddrType::Label(self.label_counter)
     }
 }
 

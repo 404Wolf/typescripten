@@ -185,8 +185,10 @@ pub enum Expr {
 pub enum Stmt {
     Expr(Box<Expr>),
     Block(LinkedList<Stmt>),
+    /// Condition, then statement, else statement
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>, Option<Box<Stmt>>),
+    /// Condition then block
     DoWhile(Expr, Box<Stmt>),
 }
 

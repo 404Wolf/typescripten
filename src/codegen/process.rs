@@ -1,5 +1,5 @@
 use crate::{codes::opt_codes::OpCode, optimize::Optimize, types::MaybeIndex};
-use parse::symbols::{Consts, Expr, Stmt, StmtList, Type, Widenable};
+use parse::symbols::{Consts, Expr, Keywords, Stmt, StmtList, Type, Widenable};
 
 use crate::{
     astable::{AssignmentCST, AssignmentIdentifier, CSTError, ReferenceError, TypeError},
@@ -32,6 +32,8 @@ pub fn get_chained_symbol_table_and_intermediate(
         stmt: &Stmt,
         chained_symbol_table: &mut AssignmentCST,
         intermediate_code: &mut IntermediateCode,
+        prev_label: &AddrType,
+        post_label: &AddrType,
     ) -> Result<(), ProcessError> {
         match stmt {
             Stmt::Expr(expr) => {
@@ -44,7 +46,13 @@ pub fn get_chained_symbol_table_and_intermediate(
 
                 // Process all statements in the block
                 block_stmts.iter().try_for_each(|stmt| {
-                    process_stmt(stmt, chained_symbol_table, intermediate_code)
+                    process_stmt(
+                        stmt,
+                        chained_symbol_table,
+                        intermediate_code,
+                        prev_label,
+                        post_label,
+                    )
                 })?;
 
                 // No instructions since they don't return anything!
@@ -55,14 +63,145 @@ pub fn get_chained_symbol_table_and_intermediate(
                 Ok(())
             }
             // TODO! not parsing else statements
-            Stmt::If(_, stmt, _el) => {
-                process_stmt(stmt.as_ref(), chained_symbol_table, intermediate_code)
+            Stmt::If(condition, then, r#else) => {
+                let condition_result =
+                    process_expr(condition, chained_symbol_table, intermediate_code)?;
+
+                let end_label = intermediate_code.alloc_label();
+                let then_label = intermediate_code.alloc_label();
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::BiOp(
+                        opt_codes::BiOpCode::JumpIf,
+                        [condition_result, then_label.clone()],
+                    ),
+                    AddrType::Effect,
+                ));
+
+                if let Some(else_stmt) = r#else {
+                    process_stmt(
+                        else_stmt,
+                        chained_symbol_table,
+                        intermediate_code,
+                        prev_label,
+                        post_label,
+                    );
+                }
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::UniOp(opt_codes::UniOpCode::Jump, [end_label.clone()]),
+                    AddrType::Effect,
+                ));
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::ZOp(opt_codes::ZOpCode::Label),
+                    then_label,
+                ));
+
+                process_stmt(
+                    &then,
+                    chained_symbol_table,
+                    intermediate_code,
+                    prev_label,
+                    post_label,
+                );
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::ZOp(opt_codes::ZOpCode::Label),
+                    end_label,
+                ));
+
+                return Ok(());
             }
-            Stmt::While(_, stmt, _el) => {
-                process_stmt(stmt.as_ref(), chained_symbol_table, intermediate_code)
+            Stmt::While(condition, stmts, r#_else) => {
+                // while pre_condition: (condition) {
+                // }
+                // pre_else:
+                // else {
+                // }
+                // post_while:
+
+                let pre_condition_label = intermediate_code.alloc_label();
+                let post_while_label = intermediate_code.alloc_label();
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::ZOp(opt_codes::ZOpCode::Label),
+                    pre_condition_label.clone(),
+                ));
+
+                let condition_result =
+                    process_expr(&Expr::Not(Box::new(condition.clone())), chained_symbol_table, intermediate_code)?;
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::BiOp(
+                        opt_codes::BiOpCode::JumpIf,
+                        [condition_result, post_while_label.clone()],
+                    ),
+                    AddrType::Effect,
+                ));
+
+                process_stmt(
+                    stmts.as_ref(),
+                    chained_symbol_table,
+                    intermediate_code,
+                    &pre_condition_label,
+                    &post_while_label,
+                );
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::ZOp(opt_codes::ZOpCode::Label),
+                    post_while_label.clone(),
+                ));
+
+                Ok(())
             }
-            Stmt::DoWhile(_, stmt) => {
-                process_stmt(stmt.as_ref(), chained_symbol_table, intermediate_code)
+            Stmt::DoWhile(condition, stmts) => {
+                // pre_do: do {
+                //    stuff
+                // }
+                // pre_condition:
+                //   while (condition);
+                // post_do:
+
+                let pre_do_label = intermediate_code.alloc_label();
+                let pre_condition_label = intermediate_code.alloc_label();
+                let post_do_label = intermediate_code.alloc_label();
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::ZOp(opt_codes::ZOpCode::Label),
+                    pre_do_label.clone(),
+                ));
+
+                process_stmt(
+                    stmts.as_ref(),
+                    chained_symbol_table,
+                    intermediate_code,
+                    &pre_condition_label,
+                    &post_do_label,
+                );
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::ZOp(opt_codes::ZOpCode::Label),
+                    pre_condition_label.clone(),
+                ));
+
+                let condition_result =
+                    process_expr(condition, chained_symbol_table, intermediate_code)?;
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::BiOp(
+                        opt_codes::BiOpCode::JumpIf,
+                        [condition_result, pre_do_label.clone()],
+                    ),
+                    AddrType::Effect,
+                ));
+
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::ZOp(opt_codes::ZOpCode::Label),
+                    post_do_label.clone(),
+                ));
+
+                Ok(())
             }
         }
     }
@@ -280,6 +419,9 @@ pub fn get_chained_symbol_table_and_intermediate(
                 chained_symbol_table.pop_scope();
 
                 Ok(dest_var)
+            }
+            Expr::Keyword(Keywords::Break) => {
+                todo!("break not impl")
             }
             k => {
                 todo!("Expression processing not implemented for {:?}", k)

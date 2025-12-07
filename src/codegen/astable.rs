@@ -250,22 +250,22 @@ impl AssignmentCST {
     pub fn clear_temps(&mut self) -> Result<(), ProcessingError> {
         let mut offset_to_remove = 0;
 
-        for i in 0..self.tmp_name_counter.clone() {
-            let table = self.get_table_mut();
-            let thing_to_remove = &AssignmentIdentifier::new(i.to_string(), true);
-            match table.remove(thing_to_remove) {
-                Some(value) => {
-                    offset_to_remove += value.meta.type_.size_of();
-                    self.tmp_name_counter -= 1;
-                }
-                None => return Err(ProcessingError::WasNotThere),
-            }
-        }
+        // for i in 0..self.tmp_name_counter.clone() {
+        //     let table = self.get_table_mut();
+        //     let thing_to_remove = &AssignmentIdentifier::new(i.to_string(), true);
+        //     match table.remove(thing_to_remove) {
+        //         Some(value) => {
+        //             offset_to_remove += value.meta.type_.size_of();
+        //             self.tmp_name_counter -= 1;
+        //         }
+        //         None => return Err(ProcessingError::WasNotThere),
+        //     }
+        // }
 
-        self.tmp_name_counter = 0;
-        self.get_current_meta_mut()
-            .ok_or(ProcessingError::NoExistingScope)?
-            .latest_memory_offset -= offset_to_remove;
+        // self.tmp_name_counter = 0;
+        // self.get_current_meta_mut()
+        //     .ok_or(ProcessingError::NoExistingScope)?
+        //     .latest_memory_offset -= offset_to_remove;
 
         Ok(())
     }
