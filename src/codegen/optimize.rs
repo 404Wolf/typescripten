@@ -163,78 +163,84 @@ impl Optimize for Expr {
         }
 
         fn optimize_strength_reduction(expr: &Expr) -> Expr {
-            match expr {
-                Expr::Mul(left_expr, right_expr) | Expr::Div(left_expr, right_expr) => {
-                    // Check if the right is a power of two
-                    match **right_expr {
-                        Expr::Const(n) => match n {
-                            // n is number of zeros on the b
-                            Consts::Int(right_int) if right_int.count_ones() == 1 => match expr {
-                                Expr::Mul(left_expr, _) => Expr::Shl(
-                                    left_expr.clone(),
-                                    Box::new(Expr::Const(Consts::Int(
-                                        right_int.trailing_zeros().into(),
-                                    ))),
-                                ),
-                                Expr::Div(left_expr, _) => Expr::Shr(
-                                    left_expr.clone(),
-                                    Box::new(Expr::Const(Consts::Int(
-                                        right_int.trailing_zeros().into(),
-                                    ))),
-                                ),
-                                _ => unreachable!("already matched on mul/div"),
-                            },
-                            Consts::Int(right_int)
-                                if (right_int - 1).count_ones() == 1
-                                    && matches!(expr, Expr::Mul(_, _))
-                                    && matches!(**left_expr, Expr::ID(_)) =>
-                            {
-                                // right_int is (2^n +/- 1)
-                                // x = 1001
-                                // x - 1 = 1000
-                                // x = x << 3 + x
-                                Expr::Add(
-                                    Box::new(Expr::Shl(
-                                        left_expr.clone(),
-                                        Box::new(Expr::Const(Consts::Int(
-                                            (right_int - 1).trailing_zeros().into(),
-                                        ))),
-                                    )),
-                                    left_expr.clone(),
-                                )
-                            }
-                            Consts::Int(right_int)
-                                if (right_int + 1).count_ones() == 1
-                                    && matches!(expr, Expr::Mul(_, _))
-                                    && matches!(**left_expr, Expr::ID(_)) =>
-                            {
-                                Expr::Sub(
-                                    Box::new(Expr::Shr(
-                                        left_expr.clone(),
-                                        Box::new(Expr::Const(Consts::Int(
-                                            (right_int + 1).trailing_zeros().into(),
-                                        ))),
-                                    )),
-                                    left_expr.clone(),
-                                )
-                            }
-                            Consts::Int(_) => expr.clone(),
-                            _ => expr.clone(),
-                        },
-                        _ => expr.clone(),
-                    }
-                }
-                _ => expr.clone(),
-            }
-        }
+             match expr {
+                 Expr::Mul(left_expr, right_expr) | Expr::Div(left_expr, right_expr) => {
+                     /// can_swap: Division cannot be swapped
+                     fn try_optimize_power_of_two(
+                         op: &Expr,
+                         value_expr: &Box<Expr>,
+                         const_expr: &Box<Expr>,
+                         can_swap: bool,
+                     ) -> Option<Expr> {
+                         match **const_expr {
+                             Expr::Const(Consts::Int(const_int)) if const_int.count_ones() == 1 => {
+                                 match op {
+                                     Expr::Mul(_, _) => Some(Expr::Shl(
+                                         value_expr.clone(),
+                                         Box::new(Expr::Const(Consts::Int(
+                                             const_int.trailing_zeros().into(),
+                                         ))),
+                                     )),
+                                     Expr::Div(_, _) if can_swap => Some(Expr::Shr(
+                                         value_expr.clone(),
+                                         Box::new(Expr::Const(Consts::Int(
+                                             const_int.trailing_zeros().into(),
+                                         ))),
+                                     )),
+                                     _ => None,
+                                 }
+                             },
+                             Expr::Const(Consts::Int(const_int))
+                                 if (const_int - 1).count_ones() == 1
+                                     && matches!(op, Expr::Mul(_, _))
+                                     && matches!(**value_expr, Expr::ID(_)) =>
+                             {
+                                 Some(Expr::Add(
+                                     Box::new(Expr::Shl(
+                                         value_expr.clone(),
+                                         Box::new(Expr::Const(Consts::Int(
+                                             (const_int - 1).trailing_zeros().into(),
+                                         ))),
+                                     )),
+                                     value_expr.clone(),
+                                 ))
+                             },
+                             Expr::Const(Consts::Int(const_int))
+                                 if (const_int + 1).count_ones() == 1
+                                     && matches!(op, Expr::Mul(_, _))
+                                     && matches!(**value_expr, Expr::ID(_)) =>
+                             {
+                                 Some(Expr::Sub(
+                                     Box::new(Expr::Shl(
+                                         value_expr.clone(),
+                                         Box::new(Expr::Const(Consts::Int(
+                                             (const_int + 1).trailing_zeros().into(),
+                                         ))),
+                                     )),
+                                     value_expr.clone(),
+                                 ))
+                             },
+                             _ => None,
+                         }
+                     }
 
-        fn optimize_commutative(expr: Expr, eval: &impl Fn(&Expr) -> Expr) -> Expr {
-            match expr {
-                Expr::Add(left_expr, right_expr) => Expr::Add(right_expr, left_expr).optimize(eval),
-                Expr::Mul(left_expr, right_expr) => Expr::Mul(right_expr, left_expr).optimize(eval),
-                _ => expr,
-            }
-        }
+                     // Try with constant on the right
+                     if let Some(optimized) = try_optimize_power_of_two(expr, left_expr, right_expr, true) {
+                         return optimized;
+                     }
+
+                     // Try with constant on the left (for multiplication only)
+                     if matches!(expr, Expr::Mul(_, _)) {
+                         if let Some(optimized) = try_optimize_power_of_two(expr, right_expr, left_expr, false) {
+                             return optimized;
+                         }
+                     }
+
+                     expr.clone()
+                 }
+                 _ => expr.clone(),
+             }
+         }
 
         let mut current = self.clone();
         loop {
@@ -243,7 +249,6 @@ impl Optimize for Expr {
             current = optimize_const(&current, eval);
             current = optimize_rec(&current, eval);
             current = optimize_strength_reduction(&current);
-            current = optimize_commutative(current, eval);
 
             if current == prev {
                 break current;
