@@ -1,7 +1,7 @@
 use logos::Logos;
 use std::{collections::LinkedList, fmt};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Type {
     Int,
     Float,
@@ -23,7 +23,9 @@ impl Widenable for Type {
             (Type::Int, Type::Int) => Some(Type::Int),
             (Type::Float, Type::Float) => Some(Type::Float),
             (Type::Boolean, Type::Boolean) => Some(Type::Boolean),
-            _ => None,
+            (Type::Array(r#type, index), _) => Some(Type::Array(r#type.clone(), index.clone())),
+            (_, Type::Array(r#type, index)) => Some(Type::Array(r#type.clone(), index.clone())),
+            _ => Some(self.clone()),
         }
     }
 }
@@ -137,25 +139,33 @@ pub enum Token<'a> {
     Whitespace,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Keywords {
     Break,
     Continue,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Copy)]
 pub enum Consts {
-    Int(f32), // the error handling for narrowing is elsewhere
+    Int(i128), // the error handling for narrowing is elsewhere
     Float(f32),
     Boolean(bool),
 }
 
-#[derive(Clone, Debug)]
+impl Default for Consts {
+    fn default() -> Self {
+        Consts::Int(0)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
     Div(Box<Expr>, Box<Expr>),
+    Shl(Box<Expr>, Box<Expr>),
+    Shr(Box<Expr>, Box<Expr>),
     Not(Box<Expr>),
     Eql(Box<Expr>, Box<Expr>),
     NEq(Box<Expr>, Box<Expr>),
@@ -177,8 +187,10 @@ pub enum Expr {
 pub enum Stmt {
     Expr(Box<Expr>),
     Block(LinkedList<Stmt>),
+    /// Condition, then statement, else statement
     If(Expr, Box<Stmt>, Option<Box<Stmt>>),
     While(Expr, Box<Stmt>, Option<Box<Stmt>>),
+    /// Condition then block
     DoWhile(Expr, Box<Stmt>),
 }
 
@@ -283,6 +295,8 @@ impl fmt::Display for Expr {
             Expr::Declare(types, _) => write!(f, "{} id", types),
             Expr::Group(expr) => write!(f, "( {} )", expr.as_ref()),
             Expr::Keyword(keyword) => write!(f, "{}", keyword),
+            Expr::Shl(lhs, rhs) => write!(f, "{} << {}", lhs.as_ref(), rhs.as_ref()),
+            Expr::Shr(lhs, rhs) => write!(f, "{} >> {}", lhs.as_ref(), rhs.as_ref()),
         }
     }
 }

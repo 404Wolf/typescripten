@@ -4,8 +4,7 @@ use chumsky::input::Stream;
 use chumsky::prelude::*;
 use chumsky::span::SimpleSpan;
 use clap::Parser;
-use codegen::ast_to_table::AssignmentCST;
-use codegen::table::ChainedSymbolTable;
+use codegen::process::get_chained_symbol_table_and_intermediate;
 use env_logger::{Builder, Env};
 use logos::Logos;
 use parse::parse::parser;
@@ -60,10 +59,16 @@ fn main() {
         println!("Full parse AST:");
         println!("{:#?}\n", &ast);
 
-        TryInto::<AssignmentCST>::try_into(ast).unwrap_or_else(|e| {
-            eprintln!("Error during symbol table construction: {:?}", e);
-            exit(1);
-        });
+        let (chained_symbol_table, intermediate_code) =
+            get_chained_symbol_table_and_intermediate(&ast).unwrap_or_else(|e| {
+                eprintln!("Error during symbol table construction: {:?}", e);
+                exit(1);
+            });
+
+        println!("Chained Symbol Table:");
+        println!("{:#?}\n", &chained_symbol_table);
+        println!("Generated Intermediate Code:");
+        println!("{}\n", &intermediate_code);
     } else {
         errs.into_iter().for_each(|e| {
             Report::build(ReportKind::Error, ((), e.span().into_range()))

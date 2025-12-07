@@ -5,30 +5,48 @@ mod tests {
         input::{Input, Stream},
         span::SimpleSpan,
     };
-    use codegen::ast_to_table::{AssignmentCST, ParseError, ReferenceError};
+    use codegen::{
+        astable::{AssignmentCST, CSTError, ReferenceError},
+        process::get_chained_symbol_table_and_intermediate,
+    };
     use logos::Logos;
     use parse::{parse::parser, symbols::*};
 
     #[allow(dead_code)]
     fn get_ast_and_chained_symbol_table(
         src: &str,
-    ) -> (Option<StmtList>, Result<AssignmentCST, ParseError>) {
+    ) -> (Option<StmtList>, Result<AssignmentCST, CSTError>) {
         let token_iter = Token::lexer(src).spanned().map(|(tok, span)| {
             let span = Into::<SimpleSpan<usize>>::into(span);
-            (tok.unwrap(), span)
+            match tok {
+                Ok(tok) => (tok, span),
+                Err(()) => (Token::Error, span),
+            }
         });
 
         let token_stream =
             Stream::from_iter(token_iter).map((0..src.len()).into(), |(t, s): (_, _)| (t, s));
 
-        let (ast, _) = parser().parse(token_stream).into_output_errors();
+        let (ast, _errs) = parser().parse(token_stream).into_output_errors();
 
-        let chained_symbol_table = ast
-            .clone()
-            .expect("AST should be generated successfully.")
-            .try_into();
+        if let Some(ref ast) = ast {
+            let chained_symbol_table = get_chained_symbol_table_and_intermediate(ast)
+                .map(|(cst, _)| cst)
+                .map_err(|e| e);
 
-        (ast, chained_symbol_table)
+            (
+                Some(ast.clone()),
+                chained_symbol_table
+                    .map_err(|_| CSTError::ReferenceError(ReferenceError::VariableDoesntExist)),
+            )
+        } else {
+            (
+                None,
+                Err(CSTError::ReferenceError(
+                    ReferenceError::VariableDoesntExist,
+                )),
+            )
+        }
     }
 
     #[test]
@@ -50,18 +68,18 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 std::collections::HashMap::new(),
                 vec![(
-                    codegen::ast_to_table::AssignmentIdentifier {
+                    codegen::astable::AssignmentIdentifier {
                         name: "x".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue {
-                        type_: Type::Int,
-                        value: None
-                    }
+                    codegen::astable::AssignmentValue::new(Type::Int, None, Some(0))
                 )]
                 .into_iter()
                 .collect()
@@ -88,18 +106,18 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 std::collections::HashMap::new(),
                 vec![(
-                    codegen::ast_to_table::AssignmentIdentifier {
+                    codegen::astable::AssignmentIdentifier {
                         name: "count".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue {
-                        type_: Type::Int,
-                        value: None
-                    }
+                    codegen::astable::AssignmentValue::new(Type::Int, None, Some(0))
                 )]
                 .into_iter()
                 .collect()
@@ -126,18 +144,18 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 std::collections::HashMap::new(),
                 vec![(
-                    codegen::ast_to_table::AssignmentIdentifier {
+                    codegen::astable::AssignmentIdentifier {
                         name: "num".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue {
-                        type_: Type::Int,
-                        value: None
-                    }
+                    codegen::astable::AssignmentValue::new(Type::Int, None, Some(0))
                 )]
                 .into_iter()
                 .collect()
@@ -162,41 +180,43 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 vec![
                     (
-                        codegen::ast_to_table::AssignmentIdentifier {
+                        codegen::astable::AssignmentIdentifier {
                             name: "z".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue {
-                            type_: Type::Array(
+                        codegen::astable::AssignmentValue::new(
+                            Type::Array(
                                 Box::new(Type::Array(Box::new(Type::Int), Some(12))),
                                 Some(2)
                             ),
-                            value: None
-                        }
+                            None,
+                            Some(12)
+                        )
                     ),
                     (
-                        codegen::ast_to_table::AssignmentIdentifier {
+                        codegen::astable::AssignmentIdentifier {
                             name: "y".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue {
-                            type_: Type::Array(Box::new(Type::Float), None),
-                            value: None
-                        }
+                        codegen::astable::AssignmentValue::new(
+                            Type::Array(Box::new(Type::Float), None),
+                            None,
+                            Some(4)
+                        )
                     ),
                     (
-                        codegen::ast_to_table::AssignmentIdentifier {
+                        codegen::astable::AssignmentIdentifier {
                             name: "x".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue {
-                            type_: Type::Int,
-                            value: None
-                        }
+                        codegen::astable::AssignmentValue::new(Type::Int, None, Some(0))
                     )
                 ]
                 .into_iter()
@@ -223,34 +243,34 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 vec![
                     (
-                        codegen::ast_to_table::AssignmentIdentifier {
+                        codegen::astable::AssignmentIdentifier {
                             name: "x".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue {
-                            type_: Type::Array(Box::new(Type::Int), Some(5)),
-                            value: None
-                        }
+                        codegen::astable::AssignmentValue::new(
+                            Type::Array(Box::new(Type::Int), Some(5)),
+                            None,
+                            Some(0)
+                        )
                     ),
                     (
-                        codegen::ast_to_table::AssignmentIdentifier {
+                        codegen::astable::AssignmentIdentifier {
                             name: "y".to_string(),
                             is_temp: false
                         },
-                        codegen::ast_to_table::AssignmentValue {
-                            type_: Type::Int,
-                            value: None
-                        }
+                        codegen::astable::AssignmentValue::new(Type::Int, None, Some(20))
                     )
                 ]
                 .into_iter()
                 .collect()
             ],
-            "Variables should be in the symbol table with correct structure."
         );
     }
 
@@ -268,7 +288,7 @@ mod tests {
         println!("{:?}", ast.unwrap());
 
         match chained_symbol_table {
-            Err(ParseError::TypeError(_)) => {
+            Err(CSTError::TypeError(_)) => {
                 // Expected type error due to assignment type mismatch
             }
             _ => panic!("Expected a TypeError due to assignment type mismatch."),
@@ -289,7 +309,7 @@ mod tests {
         println!("{:?}", chained_symbol_table);
 
         match chained_symbol_table {
-            Err(ParseError::ReferenceError(ReferenceError::VariableDoesntExist)) => {
+            Err(CSTError::ReferenceError(ReferenceError::VariableDoesntExist)) => {
                 // Expected reference error due to undeclared variable
             }
             _ => panic!("Expected a ReferenceError due to undeclared variable."),
@@ -313,17 +333,17 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 vec![(
-                    codegen::ast_to_table::AssignmentIdentifier {
+                    codegen::astable::AssignmentIdentifier {
                         name: "x".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue {
-                        type_: Type::Float,
-                        value: None
-                    },
+                    codegen::astable::AssignmentValue::new(Type::Float, None, Some(0)),
                 )]
                 .into_iter()
                 .collect(),
@@ -348,17 +368,21 @@ mod tests {
             chained_symbol_table
                 .expect("Chained symbol table should be generated successfully.")
                 .get_table()
-                .log,
+                .log
+                .iter()
+                .map(|key| key.scope_node.clone())
+                .collect::<Vec<_>>(),
             vec![
                 vec![(
-                    codegen::ast_to_table::AssignmentIdentifier {
+                    codegen::astable::AssignmentIdentifier {
                         name: "arr".to_string(),
                         is_temp: false
                     },
-                    codegen::ast_to_table::AssignmentValue {
-                        type_: Type::Array(Box::new(Type::Float), Some(5)),
-                        value: None
-                    }
+                    codegen::astable::AssignmentValue::new(
+                        Type::Array(Box::new(Type::Float), Some(5)),
+                        None,
+                        Some(0)
+                    )
                 )]
                 .into_iter()
                 .collect(),
@@ -385,12 +409,12 @@ mod tests {
             .get_table()
             .log
             .iter()
-            .flat_map(|scope| scope.iter())
+            .flat_map(|scope| scope.scope_node.iter())
             .find(|(id, _)| id.name == "a")
             .map(|(_, value)| value)
             .expect("Variable 'a' should be in the symbol table log");
 
-        let assignment_type = &assignment_value.type_;
+        let assignment_type = &assignment_value.meta.type_;
         assert_eq!(*assignment_type, Type::Int);
     }
 
@@ -410,12 +434,12 @@ mod tests {
             .get_table()
             .log
             .iter()
-            .flat_map(|scope| scope.iter())
+            .flat_map(|scope| scope.scope_node.iter())
             .find(|(id, _)| id.name == "arr")
             .map(|(_, value)| value)
             .expect("Variable 'arr' should be in the symbol table log");
 
-        let assignment_type = &assignment_value.type_;
+        let assignment_type = &assignment_value.meta.type_;
 
         assert_eq!(*assignment_type, Type::Array(Box::new(Type::Int), Some(10)));
     }

@@ -4,32 +4,58 @@ use std::fmt;
 pub trait Symbol: fmt::Debug + fmt::Display + Clone {}
 impl<T: fmt::Debug + fmt::Display + Clone> Symbol for T {}
 
+pub trait NodeMetadataType: Default + fmt::Debug + Clone + PartialEq + Eq {}
+impl<T: Default + fmt::Debug + Clone + PartialEq + Eq> NodeMetadataType for T {}
+
 pub trait Identifier: fmt::Debug + fmt::Display + std::hash::Hash + Eq + Clone {}
 impl<T: fmt::Debug + fmt::Display + std::hash::Hash + Eq + Clone> Identifier for T {}
 
-type ScopeNode<I: Identifier, A: Symbol> = HashMap<I, A>;
-
-#[derive(Debug)]
-pub struct ChainedSymbolTable<I: Identifier, A: Symbol> {
-    parents: Vec<ScopeNode<I, A>>,
-    pub log: Vec<ScopeNode<I, A>>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScopeNode<I, A, K>
+where
+    I: Identifier,
+    A: Symbol,
+    K: NodeMetadataType,
+{
+    pub scope_node: HashMap<I, A>,
+    pub meta: K,
 }
 
-impl<I: Identifier, A: Symbol> Default for ChainedSymbolTable<I, A> {
+impl<I: Identifier, A: Symbol, K: NodeMetadataType> ScopeNode<I, A, K> {
+    pub fn new(map: HashMap<I, A>, meta: K) -> Self {
+        ScopeNode {
+            scope_node: map,
+            meta,
+        }
+    }
+
+    pub fn meta(&mut self) -> &mut K {
+        &mut self.meta
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ChainedSymbolTable<I: Identifier, A: Symbol, K: NodeMetadataType> {
+    parents: Vec<ScopeNode<I, A, K>>,
+    pub log: Vec<ScopeNode<I, A, K>>,
+}
+
+impl<I: Identifier, A: Symbol, K: NodeMetadataType> Default for ChainedSymbolTable<I, A, K> {
     fn default() -> Self {
         ChainedSymbolTable {
-            parents: vec![HashMap::new()],
+            parents: vec![ScopeNode::new(HashMap::new(), K::default())],
             log: Vec::new(),
         }
     }
 }
 
-impl<I: Identifier, A: Symbol> ChainedSymbolTable<I, A> {
-    pub fn push_scope(&mut self) {
-        self.parents.push(HashMap::new());
+impl<I: Identifier, A: Symbol, K: NodeMetadataType> ChainedSymbolTable<I, A, K> {
+    pub fn push_scope(&mut self, meta: Option<K>) {
+        self.parents
+            .push(ScopeNode::new(HashMap::new(), meta.unwrap_or_default()));
     }
 
-    pub fn pop_scope(&mut self) -> Option<ScopeNode<I, A>> {
+    pub fn pop_scope(&mut self) -> Option<ScopeNode<I, A, K>> {
         let old = self.parents.pop();
         self.log.push(old.clone().unwrap());
         old
@@ -42,7 +68,7 @@ impl<I: Identifier, A: Symbol> ChainedSymbolTable<I, A> {
         }
 
         for scope in self.parents.iter().rev() {
-            if let Some(value) = scope.get(key) {
+            if let Some(value) = scope.scope_node.get(key) {
                 return Some(value.clone());
             }
         }
@@ -50,11 +76,20 @@ impl<I: Identifier, A: Symbol> ChainedSymbolTable<I, A> {
         None
     }
 
+    /// Remove a variable from the current scope
+    pub fn remove(&mut self, key: &I) -> Option<A> {
+        if let Some(current_scope) = self.parents.last_mut() {
+            current_scope.scope_node.remove(key)
+        } else {
+            None
+        }
+    }
+
     /// Search upwards and update the value of the first matching key found
     pub fn update(&mut self, key: &I, value: A) -> Result<(), ()> {
         for scope in self.parents.iter_mut().rev() {
-            if scope.contains_key(key) {
-                scope.insert(key.clone(), value);
+            if scope.scope_node.contains_key(key) {
+                scope.scope_node.insert(key.clone(), value);
                 return Ok(());
             }
         }
@@ -62,18 +97,33 @@ impl<I: Identifier, A: Symbol> ChainedSymbolTable<I, A> {
     }
 
     /// Add an item to the current scope only. Adds a top level scope if you have popped off all scopes.
-    pub fn insert(&mut self, key: I, value: A) {
+    pub fn insert(&mut self, key: I, value: A) -> bool {
         if self.get_current_scope().is_none() {
-            self.push_scope();
+            self.push_scope(None); // if there were no scopes we can safely init the initial offset to 0 via defaulting
         }
 
         if let Some(current_scope) = self.parents.last_mut() {
-            current_scope.insert(key, value);
+            current_scope.scope_node.insert(key, value);
+            return true;
         }
+
+        false
     }
 
-    pub fn get_current_scope(&self) -> Option<&ScopeNode<I, A>> {
+    pub fn get_current_scope(&self) -> Option<&ScopeNode<I, A, K>> {
         self.parents.last()
+    }
+
+    pub fn get_current_scope_mut(&mut self) -> Option<&mut ScopeNode<I, A, K>> {
+        self.parents.last_mut()
+    }
+
+    pub fn get_current_meta(&self) -> Option<&K> {
+        self.get_current_scope().map(|scope| &scope.meta)
+    }
+
+    pub fn get_current_meta_mut(&mut self) -> Option<&mut K> {
+        self.get_current_scope_mut().map(|scope| &mut scope.meta)
     }
 }
 
@@ -81,9 +131,21 @@ impl<I: Identifier, A: Symbol> ChainedSymbolTable<I, A> {
 mod tests {
     use super::*;
 
+    #[derive(Default, Clone, Debug, Eq, PartialEq, Hash)]
+    struct MyString {
+        value: String,
+    }
+
+    #[test]
+    fn test_insert_returns_bool_on_insert() {
+        let mut table: ChainedSymbolTable<String, i32, MyString> = ChainedSymbolTable::default();
+        let result = table.insert("a".to_string(), 10);
+        assert!(result);
+    }
+
     #[test]
     fn test_symbol_table_basic() {
-        let mut table: ChainedSymbolTable<String, i32> = ChainedSymbolTable::default();
+        let mut table: ChainedSymbolTable<String, i32, String> = ChainedSymbolTable::default();
         table.insert("a".to_string(), 10);
         table.insert("b".to_string(), 20);
 
@@ -94,11 +156,11 @@ mod tests {
 
     #[test]
     fn test_symbol_table_chaining() {
-        let mut table = ChainedSymbolTable::<String, i32>::default();
+        let mut table = ChainedSymbolTable::<String, i32, ()>::default();
         table.insert("x".to_string(), 100);
 
         // Push a new scope (like entering a new block)
-        table.push_scope();
+        table.push_scope(None);
         // Insert into new scope
         table.insert("y".to_string(), 200);
 
@@ -109,7 +171,7 @@ mod tests {
 
     #[test]
     fn test_insert_variable_and_retrieve() {
-        let mut table: ChainedSymbolTable<String, String> = ChainedSymbolTable::default();
+        let mut table: ChainedSymbolTable<String, String, ()> = ChainedSymbolTable::default();
         let var_name = "temp_var".to_string();
         let var_value = "temp_value".to_string();
 
@@ -121,17 +183,17 @@ mod tests {
 
     #[test]
     fn test_nested_scopes() {
-        let mut table = ChainedSymbolTable::<String, i32>::default();
+        let mut table = ChainedSymbolTable::<String, i32, ()>::default();
 
         // Global scope
         table.insert("global".to_string(), 1);
 
         // First nested scope
-        table.push_scope();
+        table.push_scope(None);
         table.insert("local1".to_string(), 2);
 
         // Second nested scope
-        table.push_scope();
+        table.push_scope(None);
         table.insert("local2".to_string(), 3);
 
         // All variables should be accessible through scope chain
@@ -142,17 +204,17 @@ mod tests {
 
     #[test]
     fn test_scope_chain_lookup() {
-        let mut table = ChainedSymbolTable::<String, i32>::default();
+        let mut table = ChainedSymbolTable::<String, i32, ()>::default();
 
         // Global scope
         table.insert("global".to_string(), 1);
 
         // First nested scope
-        table.push_scope();
+        table.push_scope(None);
         table.insert("local1".to_string(), 2);
 
         // Second nested scope
-        table.push_scope();
+        table.push_scope(None);
         table.insert("local2".to_string(), 3);
 
         // All variables should be accessible through scope chain

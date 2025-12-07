@@ -1,6 +1,6 @@
 use parse::symbols::{Consts, Expr, Type, Widenable};
 
-use crate::ast_to_table::AssignmentCST;
+use crate::astable::AssignmentCST;
 
 pub trait HasType {
     fn get_type(&self, chained_symbol_table: &AssignmentCST) -> Option<Type>;
@@ -48,7 +48,7 @@ impl HasType for Expr {
                 // Look up the identifier in the symbol table
                 chained_symbol_table
                     .get(name)
-                    .map(|assignment| assignment.type_.clone())
+                    .map(|assignment| assignment.0.meta.type_.clone())
             }
             Expr::Const(c) => Some(match c {
                 Consts::Int(_) => Type::Int,
@@ -61,7 +61,7 @@ impl HasType for Expr {
             Expr::Assign(name, _, indexes) => {
                 let var_type = chained_symbol_table
                     .get(name)
-                    .map(|assignment| assignment.type_.clone());
+                    .map(|assignment| assignment.0.meta.type_.clone());
 
                 match indexes {
                     // Look up the identifier in the symbol table
@@ -86,6 +86,8 @@ impl HasType for Expr {
                     _ => None,
                 }
             }
+            Expr::Shl(a, _b) => a.get_type(chained_symbol_table),
+            Expr::Shr(a, _b) => a.get_type(chained_symbol_table),
         }
     }
 }
