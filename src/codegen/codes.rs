@@ -130,6 +130,7 @@ pub mod opt_codes {
                     BiOpCode::Subtract => write!(f, "SUB {} - {}", a, b),
                     BiOpCode::Multiply => write!(f, "MUL {} * {}", a, b),
                     BiOpCode::Divide => write!(f, "DIV {} / {}", a, b),
+                    BiOpCode::JumpIf => write!(f, "JUMP-IF {} to {}", a, b),
                 },
                 OpCode::UniOp(op, [a]) => match op {
                     UniOpCode::Negation => write!(f, "MINUS {}", a),

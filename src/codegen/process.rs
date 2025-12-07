@@ -1,3 +1,5 @@
+use std::ops::Add;
+
 use crate::{codes::opt_codes::OpCode, optimize::Optimize, types::MaybeIndex};
 use parse::symbols::{Consts, Expr, Keywords, Stmt, StmtList, Type, Widenable};
 
@@ -37,7 +39,7 @@ pub fn get_chained_symbol_table_and_intermediate(
     ) -> Result<(), ProcessError> {
         match stmt {
             Stmt::Expr(expr) => {
-                process_expr(expr.as_ref(), chained_symbol_table, intermediate_code).unwrap();
+                process_expr(expr.as_ref(), chained_symbol_table, intermediate_code, prev_label, post_label).unwrap();
                 Ok(())
             }
             Stmt::Block(block_stmts) => {
@@ -65,7 +67,7 @@ pub fn get_chained_symbol_table_and_intermediate(
             // TODO! not parsing else statements
             Stmt::If(condition, then, r#else) => {
                 let condition_result =
-                    process_expr(condition, chained_symbol_table, intermediate_code)?;
+                    process_expr(condition, chained_symbol_table, intermediate_code, &prev_label.clone(), &post_label.clone())?;
 
                 let end_label = intermediate_code.alloc_label();
                 let then_label = intermediate_code.alloc_label();
@@ -85,7 +87,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                         intermediate_code,
                         prev_label,
                         post_label,
-                    );
+                    )?;
                 }
 
                 intermediate_code.add_instruction(Instruction::new(
@@ -104,7 +106,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                     intermediate_code,
                     prev_label,
                     post_label,
-                );
+                )?;
 
                 intermediate_code.add_instruction(Instruction::new(
                     OpCode::ZOp(opt_codes::ZOpCode::Label),
@@ -130,7 +132,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                 ));
 
                 let condition_result =
-                    process_expr(&Expr::Not(Box::new(condition.clone())), chained_symbol_table, intermediate_code)?;
+                    process_expr(&Expr::Not(Box::new(condition.clone())), chained_symbol_table, intermediate_code, &pre_condition_label.clone(), &post_while_label.clone())?;
 
                 intermediate_code.add_instruction(Instruction::new(
                     OpCode::BiOp(
@@ -146,7 +148,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                     intermediate_code,
                     &pre_condition_label,
                     &post_while_label,
-                );
+                )?;
 
                 intermediate_code.add_instruction(Instruction::new(
                     OpCode::ZOp(opt_codes::ZOpCode::Label),
@@ -178,7 +180,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                     intermediate_code,
                     &pre_condition_label,
                     &post_do_label,
-                );
+                )?;
 
                 intermediate_code.add_instruction(Instruction::new(
                     OpCode::ZOp(opt_codes::ZOpCode::Label),
@@ -186,7 +188,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                 ));
 
                 let condition_result =
-                    process_expr(condition, chained_symbol_table, intermediate_code)?;
+                    process_expr(condition, chained_symbol_table, intermediate_code, &pre_condition_label, &post_do_label)?;
 
                 intermediate_code.add_instruction(Instruction::new(
                     OpCode::BiOp(
@@ -210,6 +212,8 @@ pub fn get_chained_symbol_table_and_intermediate(
         expr: &Expr,
         chained_symbol_table: &mut AssignmentCST,
         intermediate_code: &mut IntermediateCode,
+        prev_label: &AddrType,
+        post_label: &AddrType,
     ) -> Result<AddrType, ProcessError> {
         let expr = &expr.optimize(&(|expr| expr.clone()));
 
@@ -279,7 +283,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                 }
 
                 let eval_rhs =
-                    process_expr(value.as_ref(), chained_symbol_table, intermediate_code)?;
+                    process_expr(value.as_ref(), chained_symbol_table, intermediate_code, prev_label, post_label)?;
 
                 match indexes {
                     Some(ptr_offset) => {
@@ -296,6 +300,8 @@ pub fn get_chained_symbol_table_and_intermediate(
                                     ),
                                     chained_symbol_table,
                                     intermediate_code,
+                                    prev_label,
+                                    post_label,
                                 )
                             })
                             .transpose()?
@@ -393,8 +399,8 @@ pub fn get_chained_symbol_table_and_intermediate(
                     .add_tmp(widened_type.clone(), None)
                     .map_err(|err| ProcessError::CSTError(CSTError::CSTError(err)))?;
 
-                let a_addr = process_expr(a, chained_symbol_table, intermediate_code)?;
-                let b_addr = process_expr(b, chained_symbol_table, intermediate_code)?;
+                let a_addr = process_expr(a, chained_symbol_table, intermediate_code, prev_label, post_label)?;
+                let b_addr = process_expr(b, chained_symbol_table, intermediate_code, prev_label, post_label)?;
 
                 let dest_var = AddrType::Var {
                     id: AssignmentIdentifier::new(tmp_var_name.clone(), false),
@@ -421,7 +427,20 @@ pub fn get_chained_symbol_table_and_intermediate(
                 Ok(dest_var)
             }
             Expr::Keyword(Keywords::Break) => {
-                todo!("break not impl")
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::UniOp(opt_codes::UniOpCode::Jump, [post_label.clone()]),
+                    AddrType::Effect
+                ));
+
+                Ok(AddrType::Effect)
+            }
+            Expr::Keyword(Keywords::Continue) => {
+                intermediate_code.add_instruction(Instruction::new(
+                    OpCode::UniOp(opt_codes::UniOpCode::Jump, [prev_label.clone()]),
+                    AddrType::Effect
+                ));
+
+                Ok(AddrType::Effect)
             }
             k => {
                 todo!("Expression processing not implemented for {:?}", k)
@@ -429,13 +448,26 @@ pub fn get_chained_symbol_table_and_intermediate(
         }
     }
 
+    let main_prev_label = &intermediate_code.alloc_label();
+    let main_post_label = &intermediate_code.alloc_label();
+
+    intermediate_code.add_instruction(Instruction::new(
+        OpCode::ZOp(opt_codes::ZOpCode::Label),
+        main_prev_label.clone(),
+    ));
+
     match stmt_list {
         StmtList::Stmt(stmts) => {
             for stmt in stmts {
-                process_stmt(stmt, &mut chained_symbol_table, &mut intermediate_code)?;
+                process_stmt(stmt, &mut chained_symbol_table, &mut intermediate_code, main_prev_label, main_post_label)?;
             }
         }
     }
+
+    intermediate_code.add_instruction(Instruction::new(
+        OpCode::ZOp(opt_codes::ZOpCode::Label),
+        main_post_label.clone(),
+    ));
 
     chained_symbol_table.pop_scope();
     Ok((chained_symbol_table, intermediate_code))
