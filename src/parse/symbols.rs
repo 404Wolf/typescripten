@@ -23,7 +23,9 @@ impl Widenable for Type {
             (Type::Int, Type::Int) => Some(Type::Int),
             (Type::Float, Type::Float) => Some(Type::Float),
             (Type::Boolean, Type::Boolean) => Some(Type::Boolean),
-            _ => None,
+            (Type::Array(r#type, index), _) => Some(Type::Array(r#type.clone(), index.clone())),
+            (_, Type::Array(r#type, index)) => Some(Type::Array(r#type.clone(), index.clone())),
+            _ => Some(self.clone()),
         }
     }
 }

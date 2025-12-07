@@ -14,6 +14,7 @@ pub enum TypeError {
     AssignmentTypeMismatch,
     CouldntComputeOffset,
     FailToWidenOrReferenceError,
+    FailToWidenOrReferenceErrorDuringAssign,
 }
 
 #[derive(Debug, Clone)]

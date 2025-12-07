@@ -1,6 +1,10 @@
 use std::ops::Add;
 
-use crate::{codes::opt_codes::OpCode, optimize::Optimize, types::MaybeIndex};
+use crate::{
+    codes::opt_codes::OpCode,
+    optimize::Optimize,
+    types::{MaybeIndex, SizeOf},
+};
 use parse::symbols::{Consts, Expr, Keywords, Stmt, StmtList, Type, Widenable};
 
 use crate::{
@@ -39,7 +43,14 @@ pub fn get_chained_symbol_table_and_intermediate(
     ) -> Result<(), ProcessError> {
         match stmt {
             Stmt::Expr(expr) => {
-                process_expr(expr.as_ref(), chained_symbol_table, intermediate_code, prev_label, post_label).unwrap();
+                process_expr(
+                    expr.as_ref(),
+                    chained_symbol_table,
+                    intermediate_code,
+                    prev_label,
+                    post_label,
+                )
+                .unwrap();
                 Ok(())
             }
             Stmt::Block(block_stmts) => {
@@ -66,8 +77,13 @@ pub fn get_chained_symbol_table_and_intermediate(
             }
             // TODO! not parsing else statements
             Stmt::If(condition, then, r#else) => {
-                let condition_result =
-                    process_expr(condition, chained_symbol_table, intermediate_code, &prev_label.clone(), &post_label.clone())?;
+                let condition_result = process_expr(
+                    condition,
+                    chained_symbol_table,
+                    intermediate_code,
+                    &prev_label.clone(),
+                    &post_label.clone(),
+                )?;
 
                 let end_label = intermediate_code.alloc_label();
                 let then_label = intermediate_code.alloc_label();
@@ -131,8 +147,13 @@ pub fn get_chained_symbol_table_and_intermediate(
                     pre_condition_label.clone(),
                 ));
 
-                let condition_result =
-                    process_expr(&Expr::Not(Box::new(condition.clone())), chained_symbol_table, intermediate_code, &pre_condition_label.clone(), &post_while_label.clone())?;
+                let condition_result = process_expr(
+                    &Expr::Not(Box::new(condition.clone())),
+                    chained_symbol_table,
+                    intermediate_code,
+                    &pre_condition_label.clone(),
+                    &post_while_label.clone(),
+                )?;
 
                 intermediate_code.add_instruction(Instruction::new(
                     OpCode::BiOp(
@@ -187,8 +208,13 @@ pub fn get_chained_symbol_table_and_intermediate(
                     pre_condition_label.clone(),
                 ));
 
-                let condition_result =
-                    process_expr(condition, chained_symbol_table, intermediate_code, &pre_condition_label, &post_do_label)?;
+                let condition_result = process_expr(
+                    condition,
+                    chained_symbol_table,
+                    intermediate_code,
+                    &pre_condition_label,
+                    &post_do_label,
+                )?;
 
                 intermediate_code.add_instruction(Instruction::new(
                     OpCode::BiOp(
@@ -246,7 +272,7 @@ pub fn get_chained_symbol_table_and_intermediate(
                         .get_type(chained_symbol_table)
                         .ok_or(ProcessError::CSTError(CSTError::TypeError(
                             // TODO: more specific error (make get_type not return Option)
-                            TypeError::FailToWidenOrReferenceError,
+                            TypeError::FailToWidenOrReferenceErrorDuringAssign,
                         )))?;
 
                 // Table is the active scope
@@ -282,8 +308,13 @@ pub fn get_chained_symbol_table_and_intermediate(
                     )));
                 }
 
-                let eval_rhs =
-                    process_expr(value.as_ref(), chained_symbol_table, intermediate_code, prev_label, post_label)?;
+                let eval_rhs = process_expr(
+                    value.as_ref(),
+                    chained_symbol_table,
+                    intermediate_code,
+                    prev_label,
+                    post_label,
+                )?;
 
                 match indexes {
                     Some(ptr_offset) => {
@@ -373,6 +404,13 @@ pub fn get_chained_symbol_table_and_intermediate(
                 })
             }
             Expr::Const(c) => Ok(AddrType::Const(c.clone())),
+            Expr::Group(e) => process_expr(
+                e,
+                chained_symbol_table,
+                intermediate_code,
+                prev_label,
+                post_label,
+            ),
             Expr::Not(a) => {
                 let type_of_a = a.get_type(chained_symbol_table).unwrap();
 
@@ -380,7 +418,13 @@ pub fn get_chained_symbol_table_and_intermediate(
                     .add_tmp(type_of_a.clone(), None)
                     .map_err(|err| ProcessError::CSTError(CSTError::CSTError(err)))?;
 
-                let processed_a = process_expr(a, chained_symbol_table, intermediate_code, prev_label, post_label)?;
+                let processed_a = process_expr(
+                    a,
+                    chained_symbol_table,
+                    intermediate_code,
+                    prev_label,
+                    post_label,
+                )?;
 
                 let dest_var = AddrType::Var {
                     id: AssignmentIdentifier::new(tmp_var_name.clone(), false),
@@ -389,15 +433,15 @@ pub fn get_chained_symbol_table_and_intermediate(
                 };
 
                 intermediate_code.add_instruction(Instruction::new(
-                    OpCode::UniOp(
-                        opt_codes::UniOpCode::Negation, [processed_a]
-                    ),
+                    OpCode::UniOp(opt_codes::UniOpCode::Negation, [processed_a]),
                     dest_var.clone(),
                 ));
 
                 Ok(dest_var)
-            },
+            }
             Expr::Add(a, b)
+            | Expr::Shl(a, b)
+            | Expr::Shr(a, b)
             | Expr::Sub(a, b)
             | Expr::Div(a, b)
             | Expr::Mul(a, b)
@@ -423,8 +467,20 @@ pub fn get_chained_symbol_table_and_intermediate(
                     .add_tmp(widened_type.clone(), None)
                     .map_err(|err| ProcessError::CSTError(CSTError::CSTError(err)))?;
 
-                let a_addr = process_expr(a, chained_symbol_table, intermediate_code, prev_label, post_label)?;
-                let b_addr = process_expr(b, chained_symbol_table, intermediate_code, prev_label, post_label)?;
+                let a_addr = process_expr(
+                    a,
+                    chained_symbol_table,
+                    intermediate_code,
+                    prev_label,
+                    post_label,
+                )?;
+                let b_addr = process_expr(
+                    b,
+                    chained_symbol_table,
+                    intermediate_code,
+                    prev_label,
+                    post_label,
+                )?;
 
                 let dest_var = AddrType::Var {
                     id: AssignmentIdentifier::new(tmp_var_name.clone(), false),
@@ -453,7 +509,7 @@ pub fn get_chained_symbol_table_and_intermediate(
             Expr::Keyword(Keywords::Break) => {
                 intermediate_code.add_instruction(Instruction::new(
                     OpCode::UniOp(opt_codes::UniOpCode::Jump, [post_label.clone()]),
-                    AddrType::Effect
+                    AddrType::Effect,
                 ));
 
                 Ok(AddrType::Effect)
@@ -461,10 +517,50 @@ pub fn get_chained_symbol_table_and_intermediate(
             Expr::Keyword(Keywords::Continue) => {
                 intermediate_code.add_instruction(Instruction::new(
                     OpCode::UniOp(opt_codes::UniOpCode::Jump, [prev_label.clone()]),
-                    AddrType::Effect
+                    AddrType::Effect,
                 ));
 
                 Ok(AddrType::Effect)
+            }
+            Expr::Index(indexed_into, index) => {
+                let indexed_type =
+                    indexed_into
+                        .get_type(chained_symbol_table)
+                        .ok_or(ProcessError::CSTError(CSTError::TypeError(
+                            TypeError::AssignmentTypeMismatch,
+                        )))?;
+
+                // y[5 + x]
+
+                let index = *index.clone();
+
+                let indexed_into_type = indexed_type
+                    .get_type_at_indexes(1) // top level
+                    .ok_or(ProcessError::CSTError(CSTError::TypeError(
+                        TypeError::AssignmentTypeMismatch,
+                    )))?;
+
+                let (result_temp_var_id, result_temp_var_addr) = chained_symbol_table
+                    .add_tmp(indexed_into_type.clone(), None)
+                    .map_err(|err| ProcessError::CSTError(CSTError::CSTError(err)))?;
+
+                let result_temp_var_addr = AddrType::Var {
+                    id: AssignmentIdentifier::new(result_temp_var_id, true),
+                    address: result_temp_var_addr,
+                    type_: indexed_into_type,
+                };
+
+                let dest_addr_ptr = Type::get_ptr_to_expr(&indexed_type, &[index]).ok_or(
+                    ProcessError::CSTError(CSTError::TypeError(TypeError::AssignmentTypeMismatch))
+                )?;
+                let eval_dest_addr = process_expr(&dest_addr_ptr, chained_symbol_table, intermediate_code, prev_label, post_label)?;
+
+                intermediate_code.add_instruction(Instruction::new(
+                    opt_codes::OpCode::UniOp(opt_codes::UniOpCode::CopyFrom, [eval_dest_addr]),
+                    result_temp_var_addr.clone(),
+                ));
+
+                Ok(result_temp_var_addr)
             }
             k => {
                 todo!("Expression processing not implemented for {:?}", k)
@@ -483,7 +579,13 @@ pub fn get_chained_symbol_table_and_intermediate(
     match stmt_list {
         StmtList::Stmt(stmts) => {
             for stmt in stmts {
-                process_stmt(stmt, &mut chained_symbol_table, &mut intermediate_code, main_prev_label, main_post_label)?;
+                process_stmt(
+                    stmt,
+                    &mut chained_symbol_table,
+                    &mut intermediate_code,
+                    main_prev_label,
+                    main_post_label,
+                )?;
             }
         }
     }
