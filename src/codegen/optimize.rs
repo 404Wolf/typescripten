@@ -228,12 +228,23 @@ impl Optimize for Expr {
             }
         }
 
+        fn optimize_commutative(expr: Expr, eval: &impl Fn(&Expr) -> Expr) -> Expr {
+            match expr {
+                Expr::Add(left_expr, right_expr) => Expr::Add(right_expr, left_expr).optimize(eval),
+                Expr::Mul(left_expr, right_expr) => Expr::Mul(right_expr, left_expr).optimize(eval),
+                _ => expr,
+            }
+        }
+
         let mut current = self.clone();
         loop {
             let prev = current.clone();
+
             current = optimize_const(&current, eval);
             current = optimize_rec(&current, eval);
             current = optimize_strength_reduction(&current);
+            current = optimize_commutative(current, eval);
+
             if current == prev {
                 break current;
             }
@@ -323,6 +334,25 @@ mod tests {
         assert_eq!(
             optimized,
             Expr::Shr(
+                Box::new(Expr::ID("x".to_string())),
+                Box::new(Expr::Const(Consts::Int(1)))
+            )
+        );
+    }
+
+    #[test]
+    fn test_strength_reduction_num_on_left() {
+        let expr = Expr::Mul(
+            Box::new(Expr::Const(Consts::Int(2))),
+            Box::new(Expr::ID("x".to_string())),
+        );
+        // 2 * x => x << 1
+
+        let optimized = expr.optimize(&(|expr| expr.clone()));
+
+        assert_eq!(
+            optimized,
+            Expr::Shl(
                 Box::new(Expr::ID("x".to_string())),
                 Box::new(Expr::Const(Consts::Int(1)))
             )
