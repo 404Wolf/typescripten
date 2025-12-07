@@ -1,14 +1,9 @@
-use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::{
-    input::{Stream, ValueInput},
+    input::ValueInput,
     prelude::*,
 };
 use log::info;
-use logos::Logos;
-use std::{
-    collections::LinkedList,
-    sync::{Arc, Mutex},
-};
+use std::{ collections::LinkedList};
 
 use crate::symbols::*;
 
